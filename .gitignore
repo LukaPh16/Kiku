@@ -9,4 +9,3 @@ models/
 secrets/
 *token*.json
 .env
-CLAUDE.md
