@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.kiku-shell" path="/org/gnome/shell/extensions/kiku-shell/">
+    <key name="panic" type="as">
+      <default><![CDATA[['<Control><Alt>k']]]></default>
+      <summary>Panic stop: abort any running Kiku action</summary>
+    </key>
+    <key name="ptt" type="as">
+      <default><![CDATA[['<Control><Alt>space']]]></default>
+      <summary>Push-to-talk (fires on key press)</summary>
+    </key>
+  </schema>
+</schemalist>

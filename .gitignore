@@ -9,3 +9,4 @@ models/
 secrets/
 *token*.json
 .env
+gschemas.compiled

@@ -1,0 +1,8 @@
+{
+  "uuid": "kiku-shell@kiku",
+  "name": "Kiku Shell",
+  "description": "Overlay and input bridge for the Kiku desktop assistant. D-Bus API: org.kiku.Shell.",
+  "shell-version": ["50"],
+  "settings-schema": "org.gnome.shell.extensions.kiku-shell",
+  "version": 1
+}

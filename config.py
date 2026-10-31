@@ -16,7 +16,9 @@ DBUS_PATH = "/org/kiku/Shell"
 DBUS_IFACE = "org.kiku.Shell"
 
 # Hotkeys (registered by kiku-shell via Main.wm.addKeybinding)
+# install.sh writes these into the extension's gsettings
 HOTKEY_PANIC = "<Control><Alt>k"
+HOTKEY_PTT = "<Control><Alt>space"   # fires on press only (toggle-style)
 PANIC_PHRASE = "kiku stop"
 
 # Overlay motion (ms), scaled by distance
