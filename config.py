@@ -31,7 +31,27 @@ LLM_MODEL = "qwen3:1.7b"
 LLM_THINK = False
 LLM_KEEP_ALIVE = "30m"
 LLM_NUM_CTX = 2048
-LLM_MAX_TOKENS = 128
+LLM_MAX_TOKENS = 128          # chat replies
+LLM_INTENT_MAX_TOKENS = 64    # parse_intent JSON
+LLM_TIMEOUT_S = 30
+CHAT_MAX_SENTENCES = 2
+CONTEXT_TURNS = 6             # remembered user/assistant turns
+
+# Router fast path: names that mean a website, not an app ("open youtube")
+KNOWN_SITES = {
+    "youtube": "https://www.youtube.com",
+    "gmail": "https://mail.google.com",
+    "google": "https://www.google.com",
+    "github": "https://github.com",
+    "reddit": "https://www.reddit.com",
+    "wikipedia": "https://en.wikipedia.org",
+    "netflix": "https://www.netflix.com",
+    "amazon": "https://www.amazon.com",
+    "chatgpt": "https://chatgpt.com",
+    "google maps": "https://maps.google.com",
+    "google drive": "https://drive.google.com",
+    "stack overflow": "https://stackoverflow.com",
+}
 
 # Mic + energy VAD (voice/mic.py)
 MIC_DEVICE = None            # sounddevice device index/name; None = system default

@@ -1,19 +1,21 @@
 #!/bin/sh
 # Runs itself with the project venv (works from any directory).
 ''''exec "$(dirname "$0")/venv/bin/python" "$0" "$@" # '''
-"""Step 2 voice loop: listen -> transcribe -> echo "You said: ..." via TTS.
+"""Kiku main loop: listen -> transcribe -> router (rules, else LLM) -> tool or chat -> speak.
 
   ./main.py            mic + speaker (say "Kiku, ..." or press Ctrl+Alt+Space first)
   ./main.py --text     type instead of speaking
   ./main.py --mute     print replies instead of speaking (still synthesizes, for timing)
+  ./main.py --text --mute   quickest way to try the brain
 
 Ctrl+Alt+K stops speech. Ctrl+C quits.
 """
 import argparse
 import signal
 
+import time
+
 from ui.overlay import Overlay
-from voice.wake import is_stop
 
 
 def log(msg):
@@ -39,7 +41,10 @@ def main():
         log("kiku-shell is not running; continuing without the overlay")
         set_state = lambda state: None
 
+    from brain.llm import Llm
+    from brain.router import Router
     from voice.sources import LocalMic, LocalSpeaker, TextConsole
+    router = Router(Llm())
     out = LocalSpeaker(play=not args.mute)
     src = TextConsole(set_state) if args.text else LocalMic(set_state)
 
@@ -62,13 +67,15 @@ def main():
                 break
             if not command:
                 continue
-            if is_stop(command):
-                log("voice stop")
+            t = time.monotonic()
+            set_state("think")
+            reply, route = router.handle(command)
+            if route["tool"] == "stop":
                 out.stop()
-                set_state("idle")
-                continue
-            set_state("talk")
-            out.say(f"You said: {command}")
+            if reply:
+                set_state("talk")
+                out.say(reply)
+            log(f"turn: {route['via']} {route['tool']}, heard -> spoken end {(time.monotonic() - t) * 1000:.0f} ms")
             set_state("idle")
     except KeyboardInterrupt:
         out.stop()
