@@ -31,14 +31,9 @@ Ollama is already installed (`/usr/local/bin/ollama`). If not: `curl -fsSL https
 ollama pull qwen3:1.7b
 ```
 
-### Piper voice
+### TTS voice
 
-```sh
-mkdir -p models/piper && cd models/piper
-wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
-wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
-cd -
-```
+TTS is Kyutai Pocket TTS with the built-in `eve` voice (`TTS_VOICE` in `config.py`). `requirements.txt` pulls the CPU-only PyTorch build. The model downloads itself from Hugging Face on first use.
 
 The faster-whisper `base.en` model downloads itself on first use (~150 MB).
 

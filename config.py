@@ -60,8 +60,9 @@ WAKE_WORDS = ["kiku", "kikoo", "kikou", "tiku", "tikoo", "kiko", "kikku", "kicku
 WAKE_PREFIXES = ["hey", "hi", "ok", "okay"]   # "hey kiku ..." also works
 PTT_WINDOW_S = 8.0           # after the PTT hotkey, the next utterance needs no wake word
 
-# TTS (Piper)
-PIPER_VOICE = MODELS_DIR / "piper" / "en_US-lessac-medium.onnx"
+# TTS (Kyutai Pocket TTS, CPU). Voice: a built-in name ("eve", "alba", ...) or a .wav/.safetensors path
+TTS_VOICE = "eve"
+TTS_LANGUAGE = None          # None = default English model
 SPEAKER_DEVICE = None        # sounddevice output device; None = system default
 
 # I/O source: "local" (laptop mic + speaker) or "remote" (Jetson FRIDAY over net/)

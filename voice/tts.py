@@ -1,14 +1,12 @@
-"""Text to speech with Piper, played on a worker thread.
+"""Text to speech with Kyutai Pocket TTS, streamed to the speaker from a worker thread.
 
 speak(text) blocks until playback ends; stop() (from any thread) cuts it off within one
-audio block (~20 ms).
+audio block (~20 ms) and stops generation.
 """
 import collections
 import queue
 import threading
 import time
-
-import numpy as np
 
 import config
 
@@ -21,16 +19,17 @@ def _log(msg):
 
 class Tts:
     def __init__(self, play=True):
-        from piper import PiperVoice
+        from pocket_tts import TTSModel
         t = time.monotonic()
-        self.voice = PiperVoice.load(str(config.PIPER_VOICE))
-        self.rate = self.voice.config.sample_rate
+        self.model = TTSModel.load_model(language=config.TTS_LANGUAGE)
+        self.voice = self.model.get_state_for_audio_prompt(config.TTS_VOICE)
+        self.rate = self.model.sample_rate
         self.play = play
-        for _ in self.voice.synthesize("Hi."):   # warm-up
-            pass
-        _log(f"loaded {config.PIPER_VOICE.name} + warm-up in {(time.monotonic() - t) * 1000:.0f} ms")
-        self._jobs = queue.Queue()
         self._stop = threading.Event()
+        for _ in self.synth("Hi."):   # warm-up
+            pass
+        _log(f"loaded pocket-tts ({config.TTS_VOICE}) + warm-up in {(time.monotonic() - t) * 1000:.0f} ms")
+        self._jobs = queue.Queue()
         threading.Thread(target=self._worker, name="kiku-tts", daemon=True).start()
 
     def speak(self, text):
@@ -43,10 +42,6 @@ class Tts:
     def stop(self):
         self._stop.set()
 
-    @property
-    def stopped(self):
-        return self._stop.is_set()
-
     def _worker(self):
         while True:
             text, done = self._jobs.get()
@@ -57,11 +52,11 @@ class Tts:
             done.set()
 
     def synth(self, text):
-        """Yield int16 chunks (one per sentence) until stopped."""
-        for chunk in self.voice.synthesize(text):
+        """Yield float32 numpy chunks as they are generated, until stopped. Not thread-safe."""
+        for chunk in self.model.generate_audio_stream(self.voice, text, stop=self._stop):
             if self._stop.is_set():
                 return
-            yield chunk.audio_int16_array
+            yield chunk.numpy()
 
     def _say(self, text):
         t0 = time.monotonic()
@@ -70,7 +65,7 @@ class Tts:
             _log(f"synth {n * 1000 // self.rate} ms audio in {(time.monotonic() - t0) * 1000:.0f} ms (muted)")
             return
         import sounddevice as sd
-        pending = collections.deque()   # int16 arrays still to play
+        pending = collections.deque()   # float32 arrays still to play
         state = {"synth_done": False, "first": None}
         finished = threading.Event()
 
@@ -94,7 +89,7 @@ class Tts:
             if not pending and state["synth_done"]:
                 raise sd.CallbackStop
 
-        stream = sd.OutputStream(samplerate=self.rate, channels=1, dtype="int16", blocksize=_BLOCK,
+        stream = sd.OutputStream(samplerate=self.rate, channels=1, dtype="float32", blocksize=_BLOCK,
                                  device=config.SPEAKER_DEVICE, callback=callback,
                                  finished_callback=finished.set)
         with stream:

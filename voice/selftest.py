@@ -1,6 +1,6 @@
 """Voice pipeline self-test without mic or speaker (no PortAudio needed).
 
-Piper says a phrase -> resampled to 16 kHz, padded with noise -> energy VAD -> Whisper -> wake word.
+Pocket TTS says a phrase -> resampled to 16 kHz, padded with noise -> energy VAD -> Whisper -> wake word.
   venv/bin/python -m voice.selftest
 """
 import time
@@ -16,8 +16,7 @@ from voice.wake import strip_wake
 PHRASES = {"Kiku, open Firefox.": "open firefox", "What time is it?": None}
 
 
-def to_16k(audio16, rate):
-    x = audio16.astype(np.float32) / 32768.0
+def to_16k(x, rate):
     n = int(len(x) * config.SAMPLE_RATE / rate)
     return np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype(np.float32)
 
