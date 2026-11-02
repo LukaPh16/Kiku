@@ -1,4 +1,4 @@
-"""Python client for the kiku-shell overlay (org.kiku.Shell on the session bus).
+"""Python client for kiku-shell (org.kiku.Shell on the session bus): overlay, desktop info, input.
 
 Same methods as the D-Bus API, in snake_case. All coordinates are global stage
 (logical) pixels, passed through unchanged; scaling is handled in the extension.
@@ -157,6 +157,68 @@ class Overlay:
         """[{index, x, y, width, height, primary, scale, ui_scale}, ...] or []."""
         r = self._do("GetMonitors")
         return json.loads(r[0]) if r else []
+
+    # ---- desktop (read-only) ----
+
+    def _json(self, member, default):
+        r = self._do(member)
+        return json.loads(r[0]) if r else default
+
+    def list_windows(self):
+        """[{id, app_id, title, frame, buffer, focused, minimized, monitor, on_active_workspace, pid}], top first."""
+        return self._json("ListWindows", [])
+
+    def list_apps(self):
+        """[{app_id, name, generic, keywords, exec, running}]"""
+        return self._json("ListApps", [])
+
+    def dash_icons(self):
+        """[{app_id, name, rect, running, visible}] from the dock (or overview dash)."""
+        return self._json("DashIcons", [])
+
+    def overview_state(self):
+        """{visible, animating, search_rect, search_focused, search_text}"""
+        return self._json("OverviewState", {})
+
+    def activate_window(self, window_id):
+        r = self._do("ActivateWindow", "t", (int(window_id),))
+        return bool(r and r[0])
+
+    def launch_app(self, app_id):
+        r = self._do("LaunchApp", "s", (app_id,))
+        return bool(r and r[0])
+
+    def screenshot(self):
+        """Path of a full-stage PNG in /tmp, or None."""
+        r = self._do("Screenshot", ms=3000)
+        return r[0] if r else None
+
+    # ---- input (virtual devices). Return False if aborted/failed. ----
+
+    def pointer_move(self, x, y):
+        self._do("PointerMove", "dd", (float(x), float(y)))
+
+    def click(self, button=1):
+        r = self._do("Click", "u", (int(button),))
+        return bool(r and r[0])
+
+    def scroll(self, dx, dy):
+        r = self._do("Scroll", "ii", (int(dx), int(dy)), ms=40 * (abs(dx) + abs(dy)))
+        return bool(r and r[0])
+
+    def key_combo(self, combo):
+        """"ctrl+l", "super", "enter", "ctrl+shift+t"."""
+        r = self._do("KeyCombo", "s", (combo,))
+        return bool(r and r[0])
+
+    def type_text(self, text, cps):
+        """Returns chars that couldn't be typed (0 = all), -1 if aborted, None if the call failed."""
+        r = self._do("TypeText", "su", (text, int(cps)), ms=len(text) * 1000 // max(1, int(cps)))
+        return r[0] if r else None
+
+    def abort(self):
+        """Same as the panic hotkey: stop motion and input, release held keys."""
+        self._do("Abort")
 
     def close(self):
         if self._bus is not None:

@@ -154,6 +154,7 @@ RULES = [
     (r"(?:read|open|show)(?: me)? (?:the )?" + _EMAILWORD + r" (?:number )?" + NUM, _read_email),
     # websites and apps
     (r"(?:go to|goto|navigate to|browse to|visit|take me to)(?: the)? (?P<x>.+?)(?: website| site)?", _website),
+    (r"(?:switch to|switch over to|show me) (?P<x>.+?)(?P<kind> app| application| window)?", _open),
     (r"(?:open|launch|start|fire up|bring up|pull up)(?: up)? (?P<x>.+?)"
      r"(?P<kind> app| application| website| site| page)?", _open),
 ]

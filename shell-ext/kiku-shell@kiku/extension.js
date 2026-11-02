@@ -7,6 +7,8 @@ import Shell from 'gi://Shell';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+import * as Desktop from './desktop.js';
+import {Input} from './input.js';
 import {Overlay, STATES} from './overlay.js';
 
 const BUS_NAME = 'org.kiku.Shell';
@@ -59,6 +61,52 @@ const IFACE = `
     <method name="GetMonitors">
       <arg type="s" name="json" direction="out"/>
     </method>
+    <method name="ListWindows">
+      <arg type="s" name="json" direction="out"/>
+    </method>
+    <method name="ListApps">
+      <arg type="s" name="json" direction="out"/>
+    </method>
+    <method name="DashIcons">
+      <arg type="s" name="json" direction="out"/>
+    </method>
+    <method name="ActivateWindow">
+      <arg type="t" name="id" direction="in"/>
+      <arg type="b" name="ok" direction="out"/>
+    </method>
+    <method name="LaunchApp">
+      <arg type="s" name="app_id" direction="in"/>
+      <arg type="b" name="ok" direction="out"/>
+    </method>
+    <method name="PointerMove">
+      <arg type="d" name="x" direction="in"/>
+      <arg type="d" name="y" direction="in"/>
+    </method>
+    <method name="Click">
+      <arg type="u" name="button" direction="in"/>
+      <arg type="b" name="done" direction="out"/>
+    </method>
+    <method name="Scroll">
+      <arg type="i" name="dx" direction="in"/>
+      <arg type="i" name="dy" direction="in"/>
+      <arg type="b" name="done" direction="out"/>
+    </method>
+    <method name="KeyCombo">
+      <arg type="s" name="combo" direction="in"/>
+      <arg type="b" name="done" direction="out"/>
+    </method>
+    <method name="TypeText">
+      <arg type="s" name="text" direction="in"/>
+      <arg type="u" name="cps" direction="in"/>
+      <arg type="i" name="skipped" direction="out"/>
+    </method>
+    <method name="OverviewState">
+      <arg type="s" name="json" direction="out"/>
+    </method>
+    <method name="Screenshot">
+      <arg type="s" name="path" direction="out"/>
+    </method>
+    <method name="Abort"/>
     <signal name="Hotkey">
       <arg type="s" name="name"/>
     </signal>
@@ -71,16 +119,19 @@ const HOTKEYS = [
     ['ptt', Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW | Shell.ActionMode.POPUP],
 ];
 
-// Slow methods (MoveTo, Hover, ScanRect) reply when the animation is done or aborted.
-function reply(invocation, promise) {
+// Slow methods (MoveTo, Hover, ScanRect, input) reply when done or aborted.
+// With a signature, the promise's result is returned as the single out arg.
+function reply(invocation, promise, signature = null) {
     promise.then(
-        () => invocation.return_value(null),
+        v => invocation.return_value(signature ? new GLib.Variant(`(${signature})`, [v]) : null),
         e => invocation.return_dbus_error(`${ERROR}.Failed`, String(e)));
 }
 
 class Service {
-    constructor(overlay) {
+    constructor(overlay, input, onAbort) {
         this._o = overlay;
+        this._in = input;
+        this._onAbort = onAbort;
         this._watchId = 0;   // watches the client that called Show
     }
 
@@ -161,13 +212,71 @@ class Service {
     GetMonitors() {
         return JSON.stringify(this._o.monitors());
     }
+
+    // ---- desktop ----
+
+    ListWindows() {
+        return JSON.stringify(Desktop.listWindows());
+    }
+
+    ListApps() {
+        return JSON.stringify(Desktop.listApps());
+    }
+
+    DashIcons() {
+        return JSON.stringify(Desktop.dashIcons());
+    }
+
+    OverviewState() {
+        return JSON.stringify(Desktop.overviewState());
+    }
+
+    ActivateWindow(id) {
+        return Desktop.activateWindow(id);
+    }
+
+    LaunchApp(appId) {
+        return Desktop.launchApp(appId);
+    }
+
+    ScreenshotAsync(_params, inv) {
+        reply(inv, Desktop.screenshot(), 's');
+    }
+
+    // ---- input (virtual devices) ----
+
+    PointerMove(x, y) {
+        this._in.pointerMove(x, y);
+    }
+
+    ClickAsync([button], inv) {
+        reply(inv, this._in.click(button), 'b');
+    }
+
+    ScrollAsync([dx, dy], inv) {
+        reply(inv, this._in.scroll(dx, dy), 'b');
+    }
+
+    KeyComboAsync([combo], inv) {
+        reply(inv, this._in.keyCombo(combo), 'b');
+    }
+
+    TypeTextAsync([text, cps], inv) {
+        reply(inv, this._in.typeText(text, cps), 'i');
+    }
+
+    // Same as the panic hotkey, for clients ("kiku stop").
+    Abort() {
+        this._onAbort();
+    }
 }
 
 export default class KikuShellExtension extends Extension {
     enable() {
         this._overlay = new Overlay(this.path);
+        this._input = new Input();
 
-        this._service = new Service(this._overlay);
+        this._service = new Service(this._overlay, this._input, () => this._abort());
         this._dbus = Gio.DBusExportedObject.wrapJSObject(IFACE, this._service);
         this._dbus.export(Gio.DBus.session, OBJECT_PATH);
         this._ownerId = Gio.bus_own_name(Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.NONE,
@@ -186,8 +295,13 @@ export default class KikuShellExtension extends Extension {
     _onHotkey(name) {
         console.log(`[KIKU] hotkey ${name}`);
         if (name === 'panic')
-            this._overlay.abort();
+            this._abort();
         this._dbus.emit_signal('Hotkey', new GLib.Variant('(s)', [name]));
+    }
+
+    _abort() {
+        this._overlay.abort();
+        this._input.abort();
     }
 
     disable() {
@@ -203,6 +317,8 @@ export default class KikuShellExtension extends Extension {
         this._service = null;
         this._overlay.destroy();   // returns any pending D-Bus calls
         this._overlay = null;
+        this._input.destroy();
+        this._input = null;
         this._dbus.unexport();
         this._dbus = null;
         console.log('[KIKU] kiku-shell disabled');

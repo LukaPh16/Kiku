@@ -24,6 +24,8 @@ CASES = [
     ("start the calculator", call("open_app", app="calculator")),
     ("Open the files app", call("open_app", app="files")),
     ("fire up Steam", call("open_app", app="steam")),
+    ("Switch to Files.", call("open_app", app="files")),
+    ("switch to the terminal window", call("open_app", app="terminal")),
     # websites
     ("Open YouTube.", call("open_website", site="youtube")),
     ("open gmail", call("open_website", site="gmail")),

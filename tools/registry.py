@@ -72,5 +72,6 @@ def describe():
     return "\n".join(lines)
 
 
-# Stub tools for now (step 3): they print their args. Real ones come in later steps.
-import tools.stubs  # noqa: E402,F401  registers the stubs
+# Register tools. Stubs print their args; real ones replace them step by step.
+import tools.open_app  # noqa: E402,F401
+import tools.stubs  # noqa: E402,F401

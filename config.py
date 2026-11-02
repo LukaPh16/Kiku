@@ -25,6 +25,26 @@ PANIC_PHRASE = "kiku stop"
 MOVE_MIN_MS = 120
 MOVE_MAX_MS = 350
 
+# Desktop control (control/, tools/open_app.py)
+HOVER_MS = 120               # icon rests on a target this long before acting
+TYPE_CPS = 40                # typing speed, characters per second (fast but visible)
+APP_WAIT_S = 10.0            # wait this long for a launched app's window
+OVERVIEW_WAIT_S = 1.5        # wait for Activities to open after Super
+APP_MATCH_MIN = 0.75         # fuzzy score (0..1) needed to accept a spoken app name
+ATSPI_MAX_NODES = 4000       # accessibility tree walk budget per search
+ATSPI_TIMEOUT_S = 2.0
+OCR_MIN_SCORE = 0.6
+# Spoken name -> app name, for names fuzzy matching can't get. Names, not ids: ids differ
+# between snap/deb/flatpak (VS Code is com.microsoft.VSCode.desktop here).
+APP_ALIASES = {
+    "browser": "firefox",
+    "web browser": "firefox",
+    "file manager": "files",
+    "vs code": "visual studio code",
+    "vscode": "visual studio code",
+    "code": "visual studio code",
+}
+
 # Brain (Ollama)
 OLLAMA_HOST = "http://127.0.0.1:11434"
 LLM_MODEL = "qwen3:1.7b"

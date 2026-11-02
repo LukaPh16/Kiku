@@ -23,6 +23,20 @@ pip install -U pip
 pip install -r requirements.txt
 ```
 
+### AT-SPI in the venv
+
+`control/locate.py` uses AT-SPI through the system PyGObject (`python3-gi`, `gir1.2-atspi-2.0`). The venv doesn't see system packages, so link it in once (same Python version as the system):
+
+```sh
+ln -s /usr/lib/python3/dist-packages/gi venv/lib/python3.14/site-packages/gi
+```
+
+GTK/GNOME apps always expose accessibility. Firefox and Chrome/Electron apps only do when assistive technology is on:
+
+```sh
+gsettings set org.gnome.desktop.interface toolkit-accessibility true   # then restart those apps
+```
+
 ### Ollama model
 
 Ollama is already installed (`/usr/local/bin/ollama`). If not: `curl -fsSL https://ollama.com/install.sh | sh`.
@@ -44,6 +58,37 @@ The faster-whisper `base.en` model downloads itself on first use (~150 MB).
 ```
 
 The extension loads at login but keeps Kiku hidden until `./kiku.py` (or any client) calls `Show`. It hides again on `Hide` or when that process exits.
+
+## Desktop control
+
+```sh
+./main.py --text         # try: "open files", "open calculator", "switch to firefox"
+venv/bin/python -m control.locate_debug "Firefox"            # highlight what was found
+venv/bin/python -m control.locate_debug "Save" --source atspi
+venv/bin/python -m control.locate_debug --list               # windows, dock icons, overview state
+venv/bin/python -m tests.test_open_app                       # app name matching
+```
+
+After changing `shell-ext/`, log out and back in (Wayland can't reload the shell in place).
+
+### Headless test shell
+
+You can test the extension without logging out: run a headless GNOME Shell on a private session bus,
+with its own config dirs so it doesn't touch your settings:
+
+```sh
+T=$(mktemp -d); mkdir -p $T/data/gnome-shell/extensions $T/run; chmod 700 $T/run
+ln -s "$PWD/shell-ext/kiku-shell@kiku" $T/data/gnome-shell/extensions/
+dbus-run-session -- env XDG_CONFIG_HOME=$T/config XDG_DATA_HOME=$T/data XDG_RUNTIME_DIR=$T/run \
+  GSETTINGS_BACKEND=keyfile bash -c '
+    gsettings set org.gnome.shell enabled-extensions "[\"kiku-shell@kiku\", \"ubuntu-dock@ubuntu.com\"]"
+    gnome-shell --headless --virtual-monitor 1920x1080 --no-x11 --wayland-display kiku-test &> $0/shell.log &
+    sleep 5; export WAYLAND_DISPLAY=kiku-test
+    printf "open files\nopen calculator\n" | ./main.py --text --mute
+    kill %1' $T
+```
+
+Snap apps (Spotify, Firefox) don't start in it (no systemd); GNOME apps do.
 
 ## Developing the GNOME Shell extension (Wayland)
 

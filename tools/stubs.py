@@ -1,4 +1,4 @@
-"""Stub tools: print their args and update focus so follow-ups ("read the second one") work.
+"""Stub tools (open_app is real now, see tools/open_app.py): print their args and update focus so follow-ups ("read the second one") work.
 
 Replaced by real tools (open_app, open_website, page_reader, gmail) in later steps.
 """
@@ -14,13 +14,6 @@ def _ordinal(n):
     if n == -1:
         return "last"
     return {1: "first", 2: "second", 3: "third"}.get(n, f"number {n}")
-
-
-@register("open_app", "Open a desktop application", {"app": {"type": "string"}})
-def open_app(ctx, app):
-    _stub("open_app", app=app)
-    ctx.focus["app"] = app
-    return f"Opening {app}."
 
 
 @register("open_website", "Open a website in Firefox (name or domain)", {"site": {"type": "string"}})

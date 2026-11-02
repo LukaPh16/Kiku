@@ -43,7 +43,12 @@ def main():
 
     from brain.llm import Llm
     from brain.router import Router
+    from control.actions import Actions
+    from control.locate import Locator
+    from tools import open_app
     from voice.sources import LocalMic, LocalSpeaker, TextConsole
+    actions = Actions(ov)
+    open_app.init(ov, actions, Locator(ov))
     router = Router(Llm())
     out = LocalSpeaker(play=not args.mute)
     src = TextConsole(set_state) if args.text else LocalMic(set_state)
@@ -72,6 +77,7 @@ def main():
             reply, route = router.handle(command)
             if route["tool"] == "stop":
                 out.stop()
+                actions.abort()
             if reply:
                 set_state("talk")
                 out.say(reply)
