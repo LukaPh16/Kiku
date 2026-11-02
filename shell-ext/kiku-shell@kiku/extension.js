@@ -17,6 +17,8 @@ const ERROR = 'org.kiku.Shell.Error';
 const IFACE = `
 <node>
   <interface name="org.kiku.Shell">
+    <method name="Show"/>
+    <method name="Hide"/>
     <method name="MoveTo">
       <arg type="d" name="x" direction="in"/>
       <arg type="d" name="y" direction="in"/>
@@ -79,6 +81,37 @@ function reply(invocation, promise) {
 class Service {
     constructor(overlay) {
         this._o = overlay;
+        this._watchId = 0;   // watches the client that called Show
+    }
+
+    // Show Kiku. It hides again on Hide or when the calling process leaves the bus (exit/crash).
+    ShowAsync(_params, inv) {
+        this._unwatch();
+        const sender = inv.get_sender();
+        this._watchId = Gio.bus_watch_name_on_connection(Gio.DBus.session, sender,
+            Gio.BusNameWatcherFlags.NONE, null, () => {
+                console.log(`[KIKU] client ${sender} left; hiding`);
+                this._unwatch();
+                this._o.hide();
+            });
+        this._o.show();
+        inv.return_value(null);
+    }
+
+    Hide() {
+        this._unwatch();
+        this._o.hide();
+    }
+
+    _unwatch() {
+        if (this._watchId) {
+            Gio.bus_unwatch_name(this._watchId);
+            this._watchId = 0;
+        }
+    }
+
+    destroy() {
+        this._unwatch();
     }
 
     MoveToAsync([x, y], inv) {
@@ -134,7 +167,8 @@ export default class KikuShellExtension extends Extension {
     enable() {
         this._overlay = new Overlay(this.path);
 
-        this._dbus = Gio.DBusExportedObject.wrapJSObject(IFACE, new Service(this._overlay));
+        this._service = new Service(this._overlay);
+        this._dbus = Gio.DBusExportedObject.wrapJSObject(IFACE, this._service);
         this._dbus.export(Gio.DBus.session, OBJECT_PATH);
         this._ownerId = Gio.bus_own_name(Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.NONE,
             null,
@@ -165,6 +199,8 @@ export default class KikuShellExtension extends Extension {
             Gio.bus_unown_name(this._ownerId);
             this._ownerId = 0;
         }
+        this._service.destroy();
+        this._service = null;
         this._overlay.destroy();   // returns any pending D-Bus calls
         this._overlay = null;
         this._dbus.unexport();

@@ -42,6 +42,14 @@ cd -
 
 The faster-whisper `base.en` model downloads itself on first use (~150 MB).
 
+## Run
+
+```sh
+./kiku.py        # Kiku appears; Ctrl+C to quit and it disappears
+```
+
+The extension loads at login but keeps Kiku hidden until `./kiku.py` (or any client) calls `Show`. It hides again on `Hide` or when that process exits.
+
 ## Developing the GNOME Shell extension (Wayland)
 
 On Wayland the running shell cannot be restarted in place (no Alt+F2 `r`). Use a nested test shell for development.

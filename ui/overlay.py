@@ -109,6 +109,13 @@ class Overlay:
 
     # ---- API (mirrors org.kiku.Shell) ----
 
+    def show(self):
+        """Make Kiku visible. The shell hides it again on hide() or when this process exits."""
+        self._do("Show")
+
+    def hide(self):
+        self._do("Hide")
+
     def move_to(self, x, y, wait=True):
         """Ease Kiku's icon next to (x, y). With wait=True returns once it arrived."""
         self._do("MoveTo", "dd", (float(x), float(y)), wait, ms=400)

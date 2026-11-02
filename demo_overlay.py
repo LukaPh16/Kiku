@@ -84,6 +84,7 @@ def main():
     if not ov.available:
         log("kiku-shell is not running; nothing to show")
         return
+    ov.show()
     try:
         follow(ov) if args.follow else tour(ov)
     except KeyboardInterrupt:
@@ -93,6 +94,7 @@ def main():
         ov.show_caption("")
         ov.set_state("idle")
         ov.clear_highlight()
+        ov.hide()
         ov.close()
 
 

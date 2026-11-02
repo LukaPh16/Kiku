@@ -73,7 +73,8 @@ export class Overlay {
         this._state = 'idle';
         this._follow = null;   // Clutter.Timeline while following the pointer
 
-        this._layer = new Clutter.Actor({name: 'kiku-overlay', reactive: false});
+        // Hidden until a client calls Show (see extension.js).
+        this._layer = new Clutter.Actor({name: 'kiku-overlay', reactive: false, visible: false});
         this._kiku = new St.Widget({reactive: false});
         this._face = new St.Icon({gicon: this._idleIcon, icon_size: ICON_SIZE, reactive: false});
         this._face.set_pivot_point(0.5, 0.5);
@@ -107,6 +108,33 @@ export class Overlay {
         this._caption.set_position(0, px(ICON_SIZE + 4));
         this.setState('idle');
         console.log('[KIKU] overlay ready');
+    }
+
+    get shown() {
+        return this._layer.visible && this._layer.opacity > 0;
+    }
+
+    show() {
+        const l = this._layer;
+        l.remove_all_transitions();
+        if (!l.visible) {
+            l.opacity = 0;
+            l.show();
+        }
+        this._raise();
+        ease(l, {opacity: 255, duration: FADE_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        console.log('[KIKU] overlay shown');
+    }
+
+    hide() {
+        const l = this._layer;
+        if (!l.visible)
+            return;
+        this.abort();
+        l.remove_all_transitions();
+        ease(l, {opacity: 0, duration: FADE_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD})
+            .then(done => done && l.hide());
+        console.log('[KIKU] overlay hidden');
     }
 
     _raise() {
@@ -324,6 +352,7 @@ export class Overlay {
 
     destroy() {
         this.abort();
+        this._layer.remove_all_transitions();
         this._face.remove_all_transitions();
         if (this._talkTimer)
             GLib.source_remove(this._talkTimer);
