@@ -69,9 +69,26 @@ class Page:
     def clear_selection(self):
         self.bridge.call("clear_selection")
 
-    def text(self, el=None, max_chars=20000):
+    def text(self, el=None, max_chars=20000, inner=False):
+        """Text of el (or the page). inner=True: rendered text with line breaks, hidden parts skipped."""
         args = {"element_id": el["id"]} if el else {}
-        return self.bridge.call("dom_text", max_chars=max_chars, **args)["text"]
+        return self.bridge.call("dom_text", max_chars=max_chars, inner=inner, **args)["text"]
+
+    def rows(self, row, fields, limit=50):
+        """Visible rows matching row (selector or list, first that matches wins), each with
+        fields {name: text}, field_rects, lines (its text lines), target and field_targets."""
+        res = self.bridge.call("get_rows", row=row, fields=fields, limit=limit)
+        if not res["rows"]:
+            return []
+        vp = self.viewport(res["view"])
+        for r in res["rows"]:
+            r["target"] = vp.target("row", r["rect"], {"id": r["id"]})
+            r["field_targets"] = {k: vp.target(k, fr) for k, fr in r["field_rects"].items()}
+        return res["rows"]
+
+    def focused(self):
+        """{has_focus, element: describe() of document.activeElement or None}."""
+        return self.bridge.call("get_focus")
 
     def click(self, el):
         """Scroll el into view if needed, move Kiku's icon to it, then click it in the page."""

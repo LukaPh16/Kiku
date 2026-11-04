@@ -149,3 +149,12 @@ PAGE_MIN_P_CHARS = 40            # shorter <p> are not content paragraphs (empty
 PAGE_CONNECT_WAIT_S = 3.0        # extension not connected yet (just started): wait this long
 SCAN_LINE_MS = 220               # text selection steps one visual line this often while thinking
 SCAN_RECT_MS = 900               # fallback scan line sweep (when selection fails)
+
+# Gmail (tools/gmail.py): read only, through the Firefox bridge. Selectors live in tools/gmail.py.
+GMAIL_HOST = "mail.google.com"
+GMAIL_READY_WAIT_S = 12.0        # after opening Gmail, wait this long for its search box
+GMAIL_RESULTS_WAIT_S = 8.0       # after Enter, wait this long for search results
+GMAIL_OPEN_WAIT_S = 6.0          # after clicking a row, wait this long for the email body
+GMAIL_LIST_MAX = 5               # rows read out per list
+GMAIL_READ_ALOUD_WORDS = 120     # shorter emails are read out; longer ones are summarized
+GMAIL_ROW_PAUSE_S = 0.6          # per-row highlight when there's no voice to pace it

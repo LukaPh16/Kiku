@@ -121,8 +121,9 @@ def test_questions_skip_intent():
 def test_followup_uses_focus():
     from brain.router import Router
     router = Router(llm=None)
-    reply, route = router.handle("Did Mom email me?")
-    assert route["tool"] == "check_email" and router.ctx.focus["emails"]
+    reply, route = router.handle("Did Mom email me?")   # gmail isn't set up here; tests/test_gmail.py runs it
+    assert route["tool"] == "check_email"
+    router.ctx.focus["emails"] = [{"sender": "Mom"}, {"sender": "Mom"}]
     reply, route = router.handle("Read the second one.")
     assert (route["tool"], route["args"], route["via"]) == ("read_email", {"n": 2}, "rule"), route
     reply, route = router.handle("open youtube")

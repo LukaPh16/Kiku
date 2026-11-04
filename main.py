@@ -46,18 +46,28 @@ def main():
     from browser.bridge import Bridge
     from control.actions import Actions
     from control.locate import Locator
-    from tools import open_app, open_website, page_reader
+    from tools import gmail, open_app, open_website, page_reader
     from voice.sources import LocalMic, LocalSpeaker, TextConsole
     actions = Actions(ov)
     locator = Locator(ov)
     open_app.init(ov, actions, locator)
+    from browser import geometry
     bridge = Bridge()
+    # several Firefox windows: commands go to the tab in the one GNOME has focused
+    bridge.window_title = lambda: (geometry.firefox_window(ov.list_windows()) or {}).get("title")
     bridge.start()   # the Firefox extension connects whenever Firefox runs
     open_website.init(ov, actions, locator, bridge)
     llm = Llm()
     page_reader.init(ov, actions, bridge, llm)
-    router = Router(llm)
     out = LocalSpeaker(play=not args.mute)
+
+    def speak(text):   # tools that talk while they work (gmail reads rows as it highlights them)
+        set_state("talk")
+        out.say(text)
+        set_state("think")
+
+    gmail.init(ov, actions, bridge, llm, say=speak)
+    router = Router(llm)
     src = TextConsole(set_state) if args.text else LocalMic(set_state)
 
     def on_hotkey(name):
@@ -86,8 +96,9 @@ def main():
                 out.stop()
                 actions.abort()
             if reply:
-                set_state("talk")
-                out.say(reply)
+                if not getattr(reply, "spoken", False):   # registry.Spoken: the tool already said it
+                    set_state("talk")
+                    out.say(reply)
                 ov.show_caption("")   # page answers are captioned while spoken
             log(f"turn: {route['via']} {route['tool']}, heard -> spoken end {(time.monotonic() - t) * 1000:.0f} ms")
             set_state("idle")

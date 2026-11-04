@@ -24,6 +24,11 @@ class Tool:
 TOOLS = {}
 
 
+class Spoken(str):
+    """A reply the tool already said out loud (tools/gmail.py speaks row by row); main.py won't repeat it."""
+    spoken = True
+
+
 def register(name, description, args=None):
     """Decorator: @register("open_app", "Open a desktop app", {"app": {"type": "string"}})"""
     def deco(fn):
@@ -76,4 +81,5 @@ def describe():
 import tools.open_app  # noqa: E402,F401
 import tools.open_website  # noqa: E402,F401
 import tools.page_reader  # noqa: E402,F401
+import tools.gmail  # noqa: E402,F401
 import tools.stubs  # noqa: E402,F401

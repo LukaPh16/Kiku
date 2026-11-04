@@ -1,7 +1,8 @@
 """open_website: open a site (or search) in Firefox, visibly.
 
 Firefox focused (open_app opens or switches to it) -> icon moves to the address bar (AT-SPI,
-else an estimate) -> Ctrl+L -> type the site -> Enter -> wait for the page to load via the bridge.
+else an estimate) -> Ctrl+T (a new tab, so the page you're on stays; a blank new-tab page is reused)
+-> Ctrl+L -> type the site -> Enter -> wait for the page to load via the bridge.
 Known spoken names map to URLs (config.KNOWN_SITES); "reddit.com" is typed as is; anything else
 is typed as a search, which Firefox sends to its default search engine.
 """
@@ -90,11 +91,19 @@ def _open(text):
     before = _tab_info()
     if urlbar.source == "atspi":
         _shell.highlight_rect(*urlbar.rect)
+    if before is None or not is_blank(before["url"]):
+        _actions.key("ctrl+t", target=urlbar)   # never replace the page you're on
     _actions.key("ctrl+l", target=urlbar)
     _actions.type_text(text, target=urlbar)
     _actions.key("enter", target=urlbar)
     _shell.clear_highlight()
     return _wait_load(before)
+
+
+def is_blank(url):
+    """An empty tab Kiku can use instead of opening another one."""
+    return (url or "about:blank").split("#")[0] in ("about:blank", "about:newtab", "about:home",
+                                                     "about:privatebrowsing")
 
 
 def focus_firefox():

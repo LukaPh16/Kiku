@@ -7,8 +7,9 @@ import config
 class Context:
     def __init__(self):
         self.turns = collections.deque(maxlen=config.CONTEXT_TURNS)   # (user, assistant, tool)
-        # app: last app opened/used; page: URL in the browser; emails: last listed emails
-        self.focus = {"app": None, "page": None, "emails": None}
+        # app: last app opened/used; page: URL in the browser; emails: last listed emails;
+        # email: the email open right now (tools/gmail.py)
+        self.focus = {"app": None, "page": None, "emails": None, "email": None}
 
     def add_turn(self, user, assistant, tool="chat"):
         self.turns.append((user, assistant, tool))

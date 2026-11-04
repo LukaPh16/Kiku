@@ -13,6 +13,7 @@ import collections
 import re
 import threading
 import time
+import types
 
 import config
 from browser.bridge import BridgeError
@@ -379,6 +380,11 @@ def _run(ctx, doc, el, system, prompt, source, history=()):
     _log(f"answered in {(time.monotonic() - t) * 1000:.0f} ms")
     _shell.show_caption(a)
     return a
+
+
+def explain(ctx, url, el, system, prompt, source):
+    """Scan el while the LLM answers, caption the answer (used by tools/gmail.py for long emails)."""
+    return _run(ctx, types.SimpleNamespace(url=url), el, system, prompt, source)
 
 
 def _scan_view(done):

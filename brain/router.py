@@ -126,6 +126,13 @@ def _read_email(m, ctx):
     return _call("read_email", n=word_to_int(m.group("num")))
 
 
+def _read_email_from(m, ctx):
+    s = _strip_article(m.group("s"))
+    if not s or s in ("me", "you", "him", "her", "them", "it", "there", "here") or len(s.split()) > 4:
+        return None
+    return _call("read_email", sender=s)
+
+
 def _website(m, ctx):
     x = _strip_article(m.group("x"))
     return _call("open_website", site=x) if x else None
@@ -189,6 +196,11 @@ RULES = [
     # read the nth email
     (r"(?:read|open|show)(?: me)? (?:the |my )?" + NUM + r" (?P<what>one|" + _EMAILWORD + r")", _read_email),
     (r"(?:read|open|show)(?: me)? (?:the )?" + _EMAILWORD + r" (?:number )?" + NUM, _read_email),
+    # read the email from a sender: "read the email from Ana", "open Ana's email"
+    (r"(?:read|open|show)(?: me)? (?:the |that |her |his )?(?:latest |newest |last )?(?:" + _EMAILWORD
+     + r"|one) from (?P<s>.+)", _read_email_from),
+    (r"(?:read|open|show)(?: me)? (?P<s>[a-z]+(?: [a-z]+)?)'s (?:latest |newest |last )?" + _EMAILWORD,
+     _read_email_from),
     # websites and apps
     (r"(?:go to|goto|navigate to|browse to|visit|take me to)(?: the)? (?P<x>.+?)(?: website| site)?", _website),
     (r"(?:switch to|switch over to|show me) (?P<x>.+?)(?P<kind> app| application| window)?", _open),

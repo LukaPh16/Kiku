@@ -96,7 +96,12 @@ export class Overlay {
 
         const ui = Main.layoutManager.uiGroup;
         ui.add_child(this._layer);
+        // Stay above app windows. A popup being added (child-added) isn't the only thing that changes
+        // the stacking: windows restacking or the overview closing can put the window group above us,
+        // which hid Kiku behind apps (visible only on the desktop / in the overview / after Alt+Tab).
         ui.connectObject('child-added', () => this._raise(), this);
+        global.display.connectObject('restacked', () => this._raise(), this);
+        Main.overview.connectObject('hidden', () => this._raise(), 'shown', () => this._raise(), this);
         this._raise();
 
         this._needHome = true;   // next show() starts from the home spot
@@ -151,8 +156,11 @@ export class Overlay {
         console.log('[KIKU] overlay hidden');
     }
 
+    // Cheap when already on top; called before everything Kiku draws.
     _raise() {
-        this._layer.get_parent()?.set_child_above_sibling(this._layer, null);
+        const parent = this._layer?.get_parent();
+        if (parent && parent.last_child !== this._layer)
+            parent.set_child_above_sibling(this._layer, null);
     }
 
     _iconPosFor(x, y) {
@@ -177,6 +185,7 @@ export class Overlay {
     }
 
     moveTo(x, y) {
+        this._raise();
         this.followPointer(false);
         const [ix, iy] = this._iconPosFor(x, y);
         this._target = [x, y];
@@ -223,6 +232,7 @@ export class Overlay {
     }
 
     clickPulse() {
+        this._raise();
         const [x, y] = this._target ?? [this._kiku.x, this._kiku.y + px(ICON_SIZE)];
         const size = px(18);
         const ring = new St.Widget({
@@ -256,6 +266,7 @@ export class Overlay {
     setState(s) {
         if (!STATES.includes(s))
             return false;
+        this._raise();
         const f = this._face;
         f.remove_all_transitions();
         f.set({translation_y: 0, scale_x: 1, scale_y: 1, rotation_angle_z: 0});
@@ -284,6 +295,7 @@ export class Overlay {
     }
 
     highlightRect(x, y, w, h) {
+        this._raise();
         const hl = this._highlight;
         hl.set({x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h)});
         if (!hl.visible) {
@@ -302,6 +314,7 @@ export class Overlay {
     }
 
     async scanRect(x, y, w, h, ms) {
+        this._raise();
         const frame = new St.Widget({
             reactive: false,
             style: `border: 1px solid ${ACCENT}; border-radius: 4px;`,
@@ -329,6 +342,8 @@ export class Overlay {
     }
 
     showCaption(text) {
+        if (text)
+            this._raise();
         this._caption.text = text;
         this._caption.visible = text !== '';
     }
@@ -372,6 +387,8 @@ export class Overlay {
             GLib.source_remove(this._talkTimer);
         this._talkTimer = 0;
         Main.layoutManager.uiGroup.disconnectObject(this);
+        global.display.disconnectObject(this);
+        Main.overview.disconnectObject(this);
         this._layer.destroy();
         this._layer = this._kiku = this._face = this._caption = this._highlight = null;
     }

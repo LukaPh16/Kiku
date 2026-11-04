@@ -7,7 +7,7 @@ const DEFAULT_PORT = 8766;
 const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 5000;
 const PAGE_CMDS = new Set(['get_viewport', 'get_elements', 'get_paragraphs', 'get_blocks', 'line_ranges',
-    'select_range', 'clear_selection', 'scroll_into_view', 'click', 'dom_text']);
+    'select_range', 'clear_selection', 'scroll_into_view', 'click', 'dom_text', 'get_rows', 'get_focus']);
 
 let ws = null;
 let status = 'starting';
@@ -78,7 +78,16 @@ async function onMessage(sock, data) {
 
 // ---- commands ----
 
-async function activeTab() {
+// windowTitle: title of the Firefox window GNOME says is focused (sent by Kiku). With several
+// windows, Firefox's own lastFocusedWindow can be stale on Wayland, so the title decides.
+async function activeTab(windowTitle) {
+    if (windowTitle) {
+        const hits = (await browser.tabs.query({active: true}))
+            .filter(t => t.title && windowTitle.startsWith(t.title))
+            .sort((a, b) => b.title.length - a.title.length);
+        if (hits.length)
+            return hits[0];
+    }
     const [tab] = await browser.tabs.query({active: true, lastFocusedWindow: true});
     if (!tab)
         throw new Error('no active tab');
@@ -95,7 +104,17 @@ function tabInfo(tab) {
 async function handle(cmd, args) {
     if (cmd === 'ping')
         return 'pong';
-    const tab = await activeTab();
+    const windowTitle = args._window_title;
+    delete args._window_title;
+    if (cmd === 'find_tabs') {   // tabs on a host, e.g. mail.google.com
+        const tabs = await browser.tabs.query({url: `*://${args.host}/*`});
+        return tabs.map(t => ({...tabInfo(t), active: t.active}));
+    }
+    if (cmd === 'activate_tab') {
+        const t = await browser.tabs.update(args.tab_id, {active: true});
+        return tabInfo(t);
+    }
+    const tab = await activeTab(windowTitle);
     if (cmd === 'get_url')
         return tabInfo(tab);
     if (cmd === 'navigate') {
@@ -103,6 +122,10 @@ async function handle(cmd, args) {
             throw new Error('navigate needs url');
         const t = await browser.tabs.update(tab.id, {url: args.url});
         return tabInfo(t);
+    }
+    if (cmd === 'go_back') {
+        await browser.tabs.goBack(tab.id);
+        return tabInfo(tab);
     }
     if (PAGE_CMDS.has(cmd))
         return pageCall(tab, cmd, args);

@@ -114,7 +114,8 @@ def test_open_website_flow():
     reply = open_website.open_website(ctx, "wikipedia")
     log(f"flow: {reply!r} {actions.log}")
     assert reply == "Opened wikipedia.", reply
-    assert [a[:2] for a in actions.log] == [("key", "ctrl+l"), ("type", "en.wikipedia.org"), ("key", "enter")]
+    assert [a[:2] for a in actions.log] == [("key", "ctrl+t"), ("key", "ctrl+l"), ("type", "en.wikipedia.org"),
+                                            ("key", "enter")]   # a new tab: the page you were on stays
     x, y = actions.log[0][2]
     assert 0 < x < 1366 and 0 < y < 100, (x, y)   # icon at the top of the Firefox window
     assert ctx.focus["page"] == "https://en.wikipedia.org/" and bridge.polls >= 3
@@ -137,8 +138,17 @@ def test_open_website_flow():
         reply = open_website.open_website(Context(), "best pizza")
     finally:
         open_website.open_app.ensure_open = real
-    assert called == ["firefox"] and actions.log[1][:2] == ("type", "best pizza"), (called, actions.log)
+    assert called == ["firefox"] and actions.log[2][:2] == ("type", "best pizza"), (called, actions.log)
     assert reply == "Here are the results for best pizza.", reply
+
+    # already on an empty new-tab page: use it, no extra tab
+    bridge = _FakeBridge()
+    bridge.state["url"] = "about:newtab"
+    actions = _FakeActions(on_enter=bridge.enter)
+    open_website.init(_FakeShell([win]), actions, None, bridge)
+    open_website.open_website(Context(), "wikipedia")
+    assert [a[1] for a in actions.log] == ["ctrl+l", "en.wikipedia.org", "enter"], actions.log
+    assert open_website.is_blank("about:home") and not open_website.is_blank("https://meet.google.com/x")
     log("open_website flow ok")
 
 

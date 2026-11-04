@@ -411,10 +411,70 @@ if (!window.__kikuBridge) {
         return {clicked: element_id, url: location.href};
     }
 
-    function domText({element_id, max_chars = 20000}) {
+    // inner: rendered text (el.innerText): skips hidden parts and keeps line breaks.
+    function domText({element_id, max_chars = 20000, inner = false}) {
         const el = element_id ? byId(element_id) : (document.body || document.documentElement);
-        const {text} = textMap(el, false, max_chars);
+        const text = inner ? (el.innerText || '').slice(0, max_chars) : textMap(el, false, max_chars).text;
         return {text, title: document.title, url: location.href};
+    }
+
+    // ---- rows (Gmail list): selectors come from Python so site changes are fixed in one place ----
+
+    function fieldOf(row, specs) {
+        // specs: [[selector, attr|null], ...]; '' = the row itself. First non-empty value wins.
+        for (const [sel, attr] of specs) {
+            let el;
+            try {
+                el = sel ? row.querySelector(sel) : row;
+            } catch {
+                continue;   // bad selector: try the next one
+            }
+            if (!el)
+                continue;
+            const v = norm(attr ? el.getAttribute(attr) : (el.innerText || el.textContent));
+            if (v)
+                return [v, rectOf(el.getBoundingClientRect())];
+        }
+        return [null, null];
+    }
+
+    // row: selector or list of selectors (first one with visible matches wins).
+    function getRows({row, fields = {}, limit = 50}) {
+        let list = [], used = null;
+        for (const sel of Array.isArray(row) ? row : [row]) {
+            try {
+                list = Array.from(document.querySelectorAll(sel)).filter(visible);
+            } catch {
+                list = [];
+            }
+            if (list.length) {
+                used = sel;
+                break;
+            }
+        }
+        const rows = list.slice(0, limit).map(el => {
+            const r = el.getBoundingClientRect();
+            const d = {
+                id: idOf(el), rect: rectOf(r), in_view: inView(r), fields: {}, field_rects: {},
+                lines: (el.innerText || '').split('\n').map(norm).filter(Boolean).slice(0, 12),
+            };
+            for (const [name, specs] of Object.entries(fields)) {
+                const [v, fr] = fieldOf(el, specs);
+                d.fields[name] = v;
+                if (fr)
+                    d.field_rects[name] = fr;
+            }
+            return d;
+        });
+        return {rows, total: list.length, selector: used, view: view()};
+    }
+
+    function getFocus() {
+        const el = document.activeElement;
+        const has = document.hasFocus();
+        if (!el || el === document.body || el === document.documentElement)
+            return {has_focus: has, element: null, view: view()};
+        return {has_focus: has, element: describe(el), view: view()};
     }
 
     const HANDLERS = {
@@ -431,6 +491,8 @@ if (!window.__kikuBridge) {
         scroll_into_view: scrollIntoView,
         click,
         dom_text: domText,
+        get_rows: getRows,
+        get_focus: getFocus,
     };
 
     browser.runtime.onMessage.addListener(msg => {

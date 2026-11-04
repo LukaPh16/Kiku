@@ -43,6 +43,9 @@ class Bridge:
         self._connected = threading.Event()
         self._server = None
         self._thread = None
+        # () -> title of the Firefox window that has focus (main.py sets it from kiku-shell). The
+        # extension uses it to pick the right tab when there are several Firefox windows.
+        self.window_title = None
 
     # ---- lifecycle ----
 
@@ -154,6 +157,14 @@ class Bridge:
         if self._thread is None or threading.current_thread() is self._thread:
             raise BridgeError("bridge not started (or called from its own thread)")
         timeout = config.BROWSER_CALL_TIMEOUT_S if timeout is None else timeout
+        if self.window_title is not None:
+            try:
+                title = self.window_title()
+            except Exception as e:
+                _log(f"window title lookup failed: {e!r}")
+                title = None
+            if title:
+                args["_window_title"] = title
         fut = asyncio.run_coroutine_threadsafe(self._request(cmd, args, timeout), self._loop)
         try:
             return fut.result(timeout + 1)
