@@ -46,7 +46,7 @@ def main():
     from browser.bridge import Bridge
     from control.actions import Actions
     from control.locate import Locator
-    from tools import open_app, open_website
+    from tools import open_app, open_website, page_reader
     from voice.sources import LocalMic, LocalSpeaker, TextConsole
     actions = Actions(ov)
     locator = Locator(ov)
@@ -54,7 +54,9 @@ def main():
     bridge = Bridge()
     bridge.start()   # the Firefox extension connects whenever Firefox runs
     open_website.init(ov, actions, locator, bridge)
-    router = Router(Llm())
+    llm = Llm()
+    page_reader.init(ov, actions, bridge, llm)
+    router = Router(llm)
     out = LocalSpeaker(play=not args.mute)
     src = TextConsole(set_state) if args.text else LocalMic(set_state)
 
@@ -86,6 +88,7 @@ def main():
             if reply:
                 set_state("talk")
                 out.say(reply)
+                ov.show_caption("")   # page answers are captioned while spoken
             log(f"turn: {route['via']} {route['tool']}, heard -> spoken end {(time.monotonic() - t) * 1000:.0f} ms")
             set_state("idle")
     except KeyboardInterrupt:

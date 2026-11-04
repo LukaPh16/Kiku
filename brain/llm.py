@@ -66,6 +66,14 @@ class Llm:
         _log(f"chat {(time.monotonic() - t) * 1000:.0f} ms: {reply!r}")
         return reply
 
+    def ask(self, system, prompt, history=(), sentences=None, max_tokens=None, temperature=0.4):
+        """One-off answer for tools (page reader). history: earlier chat messages. Raises on failure."""
+        msgs = [{"role": "system", "content": system}, *history, {"role": "user", "content": prompt}]
+        t = time.monotonic()
+        reply = short(self._chat(msgs, max_tokens or config.LLM_MAX_TOKENS, temperature), sentences)
+        _log(f"ask {(time.monotonic() - t) * 1000:.0f} ms: {reply!r}")
+        return reply
+
     def parse_intent(self, text, ctx=None):
         """{"tool": name, "args": {...}} via structured output; tool "chat" if nothing fits."""
         names = list(registry.TOOLS) + ["chat"]

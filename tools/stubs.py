@@ -1,6 +1,6 @@
-"""Stub tools (open_app and open_website are real now, see tools/): print their args and update focus so follow-ups ("read the second one") work.
+"""Stub tools (open_app, open_website and the page reader are real now, see tools/): print their args and update focus so follow-ups ("read the second one") work.
 
-Replaced by real tools (page_reader, gmail) in later steps.
+Replaced by real tools (gmail) in later steps.
 """
 from tools.registry import register
 
@@ -13,13 +13,6 @@ def _ordinal(n):
     if n == -1:
         return "last"
     return {1: "first", 2: "second", 3: "third"}.get(n, f"number {n}")
-
-
-@register("analyze_paragraph", "Analyze or summarize the nth paragraph of the current web page (-1 = last)",
-          {"n": {"type": "integer"}, "mode": {"type": "string", "enum": ["analyze", "summarize"]}})
-def analyze_paragraph(ctx, n, mode):
-    _stub("analyze_paragraph", n=n, mode=mode, page=ctx.focus["page"])
-    return f"I'd {mode} the {_ordinal(n)} paragraph, but page reading isn't built yet."
 
 
 @register("check_email", "Check the inbox, optionally for emails from one contact",

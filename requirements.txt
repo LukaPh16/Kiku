@@ -8,3 +8,4 @@ sounddevice>=0.5,<1
 numpy>=2,<3
 rapidocr>=3,<4             # OCR fallback in control/locate.py (onnxruntime engine)
 websockets>=15,<18         # Firefox bridge (browser/bridge.py)
+rank-bm25>=0.2,<0.3        # page reader retrieval (tools/page_reader.py)

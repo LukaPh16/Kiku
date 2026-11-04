@@ -99,12 +99,7 @@ export class Overlay {
         ui.connectObject('child-added', () => this._raise(), this);
         this._raise();
 
-        const m = Main.layoutManager.primaryMonitor;
-        if (m) {
-            this._kiku.set_position(
-                Math.round(m.x + m.width - px(ICON_SIZE + 40)),
-                Math.round(m.y + m.height - px(ICON_SIZE + 80)));
-        }
+        this._needHome = true;   // next show() starts from the home spot
         this._caption.set_position(0, px(ICON_SIZE + 4));
         this.setState('idle');
         console.log('[KIKU] overlay ready');
@@ -114,9 +109,27 @@ export class Overlay {
         return this._layer.visible && this._layer.opacity > 0;
     }
 
+    // Start spot: bottom-right of the primary monitor.
+    _goHome() {
+        const m = Main.layoutManager.primaryMonitor;
+        this.followPointer(false);
+        this._kiku.remove_all_transitions();
+        this._target = null;
+        if (m) {
+            this._kiku.set_position(
+                Math.round(m.x + m.width - px(ICON_SIZE + 40)),
+                Math.round(m.y + m.height - px(ICON_SIZE + 80)));
+        }
+        this._needHome = false;
+    }
+
     show() {
         const l = this._layer;
         l.remove_all_transitions();
+        if (!l.visible || this._needHome) {   // fresh start (also mid fade-out): from home
+            this._goHome();
+            this.showCaption('');
+        }
         if (!l.visible) {
             l.opacity = 0;
             l.show();
@@ -131,6 +144,7 @@ export class Overlay {
         if (!l.visible)
             return;
         this.abort();
+        this._needHome = true;
         l.remove_all_transitions();
         ease(l, {opacity: 0, duration: FADE_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD})
             .then(done => done && l.hide());

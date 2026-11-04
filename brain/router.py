@@ -92,6 +92,23 @@ def _paragraph(m, ctx):
     return _call("analyze_paragraph", n=word_to_int(g.get("num") or g.get("num2")), mode=mode)
 
 
+def _page_mode(verb):
+    return "summarize" if re.search(r"summ|sum up|gist|tl ?dr|what", verb) else "analyze"
+
+
+def _section(m, ctx):
+    return _call("analyze_section", mode=_page_mode(m.group("verb")))
+
+
+def _whole_page(m, ctx):
+    return _call("analyze_page", mode=_page_mode(m.group("verb")))
+
+
+def _ask_page(m, ctx):
+    x = m.group("x").strip()
+    return _call("ask_page", question=f"What does the page say about {x}?") if x else None
+
+
 def _check_email(m, ctx):
     c = m.groupdict().get("c")
     c = _strip_article(c) if c else None
@@ -130,6 +147,7 @@ def _open(m, ctx):
 
 
 _EMAILWORD = r"(?:e-?mails?|mails?|messages?)"
+_PAGEWORD = r"(?:web ?page|page|article|post|site|website|wiki(?:pedia)?(?: page| article)?|text)"
 RULES = [
     (r"(?:stop|stop it|stop talking|cancel|never ?mind|shut up|be quiet|quiet|enough|abort)", _stop),
     (r"(?:go )?back|(?:go )?back (?:a|one) page|(?:go to )?(?:the )?previous page", _back),
@@ -139,6 +157,25 @@ RULES = [
      r"(?:" + NUM + r" paragraph|paragraph (?:number )?" + NUM.replace("num", "num2") + r")"
      r"(?: on (?:this|the) page)?", _paragraph),
     (r"(?:give me )?(?P<verb>a summary) of (?:the )?" + NUM + r" paragraph", _paragraph),
+    # page reader: this section / the whole page / what it says about X
+    (r"(?P<verb>analy[sz]e|summari[sz]e|sum up|explain|break down)(?: me)? (?:this|the|the current|this current) "
+     r"(?:section|part)(?: of (?:this|the) " + _PAGEWORD + r")?", _section),
+    (r"(?:give me )?(?P<verb>a summary|an explanation|the gist) of (?:this|the) (?:section|part)", _section),
+    (r"(?P<verb>what(?:'s| is)) (?:this|the current) (?:section|part) (?:about|saying)", _section),
+    (r"(?P<verb>analy[sz]e|summari[sz]e|sum up|explain|break down)(?: me)? (?:this|the|the current|this whole|"
+     r"the whole|this entire|the entire) " + _PAGEWORD, _whole_page),
+    (r"(?:give me )?(?P<verb>a summary|an explanation|the gist|a tl ?dr) of (?:this|the|this whole|the whole) "
+     + _PAGEWORD, _whole_page),
+    (r"(?P<verb>what(?:'s| is)) (?:this|the) " + _PAGEWORD + r" (?:about|saying)", _whole_page),
+    (r"(?P<verb>tl ?dr)", _whole_page),
+    (r"what (?:does|do|did) (?:it|they|wikipedia|(?:this|the) " + _PAGEWORD + r") (?:say|mention|tell (?:me|us)|"
+     r"write|claim|state)s? about (?P<x>.+)", _ask_page),
+    (r"what (?:is|was) (?:said|written|mentioned) (?:about|on) (?P<x>.+?)(?: (?:on|in) (?:this|the) "
+     + _PAGEWORD + r")?", _ask_page),
+    (r"(?:does|did) (?:it|(?:this|the) " + _PAGEWORD + r") (?:say|mention|talk about|cover|explain)"
+     r"(?: anything)?(?: about)? (?P<x>.+)", _ask_page),
+    (r"(?:find|look for) (?:what (?:it|the " + _PAGEWORD + r") says about )?(?P<x>.+?) (?:on|in) (?:this|the) "
+     + _PAGEWORD, _ask_page),
     # email checks
     (r"(?:did|has) (?P<c>.+?) (?:e-?mail(?:ed)?|mail(?:ed)?|message(?:d)?|write|wrote|send|sent)"
      r"(?: me)?(?: (?:an? |any )?" + _EMAILWORD + r")?(?: yet| today)?", _check_email),
@@ -186,6 +223,20 @@ _QUESTION = re.compile(r"(?:what|what's|whats|who|who's|why|how|when|where|which
                        r"does|do you|can you tell|tell me|explain|and|define|should|could|would)\b")
 
 
+# After a page answer, questions and "tell me more" stay on the page (tools/page_reader.py).
+PAGE_TOOLS = {"analyze_paragraph", "analyze_section", "analyze_page", "ask_page"}
+_FOLLOWUP = re.compile(r"(?:tell me more|more|go on|continue|elaborate|explain (?:that|it|more|further)|"
+                       r"in simpler (?:terms|words)|simpler|give me an example|for example|like what|"
+                       r"how so|why|really|meaning|what do you mean|what does that mean)\b")
+
+
+def is_page_followup(text, ctx):
+    """A question (or "tell me more") right after a page answer."""
+    if not ctx.turns or ctx.turns[-1][2] not in PAGE_TOOLS:
+        return False
+    return is_question(text) or bool(_FOLLOWUP.match(normalize(text)))
+
+
 def is_question(text):
     """Questions skip intent parsing and go straight to chat (saves ~0.7 s, avoids misroutes)."""
     t = re.sub(r"^(?:please|kiku|hey|ok|okay|so)[\s,]+", "", text.lower().strip(" ,.!?"))
@@ -200,6 +251,8 @@ class Router:
         t = time.monotonic()
         r = match_rules(text, self.ctx)
         via = "rule"
+        if r is None and is_page_followup(text, self.ctx):
+            r, via = {"tool": "ask_page", "args": {"question": text.strip()}}, "followup"
         if r is None and is_question(text):
             r = {"tool": "chat", "args": {}}
         if r is None:

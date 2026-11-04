@@ -137,3 +137,15 @@ FIREFOX_APP = "firefox"          # spoken app name handed to open_app
 # AT-SPI name of Firefox's address bar (needs toolkit-accessibility; else Ctrl+L + an estimate).
 # Fuzzy-matched, so "Search with Google or enter address" matches too.
 URLBAR_NAME = "Search or enter address"
+
+# Page reader (tools/page_reader.py)
+PAGE_CHUNK_TOKENS = 300          # RAG chunk size (estimated tokens: words * 1.3)
+PAGE_TOP_K = 3                   # chunks sent to the LLM per question
+PAGE_CONTEXT_TOKENS = 1100       # max page text per prompt (fits LLM_NUM_CTX with the reply)
+PAGE_CACHE_PAGES = 8             # parsed pages kept (per URL)
+PAGE_ANSWER_SENTENCES = 3
+PAGE_MAX_TOKENS = 160            # reply length for page answers
+PAGE_MIN_P_CHARS = 40            # shorter <p> are not content paragraphs (empty/infobox bits)
+PAGE_CONNECT_WAIT_S = 3.0        # extension not connected yet (just started): wait this long
+SCAN_LINE_MS = 220               # text selection steps one visual line this often while thinking
+SCAN_RECT_MS = 900               # fallback scan line sweep (when selection fails)

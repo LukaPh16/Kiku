@@ -39,11 +39,26 @@ class Page:
         res = self.bridge.call("get_paragraphs", min_chars=min_chars)
         return self._with_targets(res["paragraphs"], self.viewport(res["view"]))
 
+    def blocks(self, timeout=10, **limits):
+        """Main content blocks (no screen targets: those come from scroll_into_view).
+        {blocks: [{id, kind: p|h|li, level, text, rect, in_view}], title, url, view}"""
+        return self.bridge.call("get_blocks", timeout=timeout, **limits)
+
     def scroll_into_view(self, el, block="center"):
         res = self.bridge.call("scroll_into_view", element_id=el["id"], block=block)
-        el.update(rect=res["rect"], in_view=res["in_view"])
-        el["target"] = self.viewport(res["view"]).target(el.get("text", "")[:60], res["rect"], {"id": el["id"]})
+        vp = self.viewport(res["view"])
+        el.update(rect=res["rect"], in_view=res["in_view"], viewport=vp)
+        el["target"] = vp.target(el.get("text", "")[:60], res["rect"], {"id": el["id"]})
         return el
+
+    def line_ranges(self, el, max_lines=60):
+        """Visual lines of el: [{start, end, target, in_view}] (offsets as in select())."""
+        res = self.bridge.call("line_ranges", element_id=el["id"], max_lines=max_lines)
+        vp = self.viewport(res["view"])
+        for ln in res["lines"]:
+            ln["target"] = vp.target("line", ln["rect"])
+            ln["in_view"] = vp.clip(ln["target"].rect) is not None
+        return res["lines"]
 
     def select(self, el, start, end):
         """Select text [start, end) of el. Returns {text, targets: [global rects of the selection]}."""

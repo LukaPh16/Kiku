@@ -6,8 +6,8 @@
 const DEFAULT_PORT = 8766;
 const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 5000;
-const PAGE_CMDS = new Set(['get_viewport', 'get_elements', 'get_paragraphs', 'select_range',
-    'clear_selection', 'scroll_into_view', 'click', 'dom_text']);
+const PAGE_CMDS = new Set(['get_viewport', 'get_elements', 'get_paragraphs', 'get_blocks', 'line_ranges',
+    'select_range', 'clear_selection', 'scroll_into_view', 'click', 'dom_text']);
 
 let ws = null;
 let status = 'starting';

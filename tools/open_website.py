@@ -85,7 +85,7 @@ def open_website(ctx, site):
 
 
 def _open(text):
-    win = _focus_firefox()
+    win = focus_firefox()
     urlbar = _urlbar(win)
     before = _tab_info()
     if urlbar.source == "atspi":
@@ -97,8 +97,9 @@ def _open(text):
     return _wait_load(before)
 
 
-def _focus_firefox():
-    """Focused Firefox window dict; opens/switches to Firefox if needed."""
+def focus_firefox():
+    """Focused Firefox window dict; opens/switches to Firefox if needed (icon goes there first).
+    Also used by tools/page_reader.py. Caller calls actions.begin(). Raises RuntimeError / Aborted."""
     win = next((w for w in _shell.list_windows() if w["focused"]), None)
     if win and geometry.is_firefox(win):
         return win

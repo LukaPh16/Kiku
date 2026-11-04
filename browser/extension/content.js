@@ -210,6 +210,159 @@ if (!window.__kikuBridge) {
         return {paragraphs: out, view: view()};
     }
 
+    // ---- main content blocks (page reader) ----
+    // Simple readability heuristic: pick the main content root, then take p / h1-h6 / li /
+    // blockquote that are visible, not inside nav/ads/sidebars/infoboxes, and not mostly links.
+
+    const SKIP_CONTAINERS = 'nav, header, footer, aside, form, table, figure, figcaption, dialog, menu, ' +
+        '[role=navigation], [role=banner], [role=contentinfo], [role=complementary], [role=search], ' +
+        '[role=dialog], [role=menu], [aria-hidden=true], [hidden]';
+    // class/id tokens (split on - _ space) that mark boilerplate
+    const SKIP_TOKENS = new Set(['nav', 'navbar', 'navbox', 'navigation', 'menu', 'sidebar', 'side',
+        'footer', 'header', 'masthead', 'breadcrumb', 'breadcrumbs', 'ad', 'ads', 'advert', 'advertisement',
+        'adslot', 'sponsor', 'sponsored', 'promo', 'promoted', 'share', 'sharing', 'social', 'related',
+        'recommended', 'newsletter', 'subscribe', 'cookie', 'cookies', 'consent', 'banner', 'popup', 'modal',
+        'infobox', 'sidebox', 'toc', 'reflist', 'references', 'reference', 'citation', 'hatnote', 'metadata',
+        'catlinks', 'mw-editsection', 'editsection', 'thumb', 'thumbcaption', 'caption', 'noprint',
+        'shortdescription', 'sr-only', 'visually-hidden', 'skip', 'byline', 'tags', 'pagination']);
+    const BLOCK_SEL = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, [role=heading]';
+    const skipCache = new WeakMap();
+
+    function tokensOf(el) {
+        const s = `${typeof el.className === 'string' ? el.className : ''} ${el.id || ''}`.toLowerCase();
+        return s.split(/[\s_]+/).flatMap(t => [t, ...t.split('-')]).filter(Boolean);
+    }
+
+    function skipped(el, root) {
+        // true if el or an ancestor (below root) is boilerplate
+        for (let e = el; e && e !== root; e = e.parentElement) {
+            if (skipCache.has(e)) {
+                if (skipCache.get(e))
+                    return true;
+                continue;
+            }
+            const bad = e.matches(SKIP_CONTAINERS) || tokensOf(e).some(t => SKIP_TOKENS.has(t));
+            skipCache.set(e, bad);
+            if (bad)
+                return true;
+        }
+        return false;
+    }
+
+    function linkDensity(el, len) {
+        let n = 0;
+        for (const a of el.querySelectorAll('a'))
+            n += norm(a.textContent).length;
+        return len ? n / len : 0;
+    }
+
+    function pTextLen(root) {
+        let n = 0;
+        for (const p of root.querySelectorAll('p'))
+            n += norm(p.textContent).length;
+        return n;
+    }
+
+    function contentRoot() {
+        const body = document.body || document.documentElement;
+        for (const sel of ['#mw-content-text', 'main', '[role=main]']) {
+            const el = document.querySelector(sel);
+            if (el && pTextLen(el) > 200)
+                return el;
+        }
+        // the <article> with the most paragraph text (news), else the best-scoring parent (readability)
+        let best = null, bestLen = 0;
+        for (const a of document.querySelectorAll('article')) {
+            const n = pTextLen(a);
+            if (n > bestLen)
+                [best, bestLen] = [a, n];
+        }
+        if (best && bestLen > 200)
+            return best;
+        const score = new Map();
+        for (const p of body.querySelectorAll('p')) {
+            const n = norm(p.textContent).length;
+            if (n < 80)
+                continue;
+            for (const [e, w] of [[p.parentElement, 1], [p.parentElement?.parentElement, 0.5]])
+                if (e)
+                    score.set(e, (score.get(e) || 0) + n * w);
+        }
+        best = body;
+        bestLen = 0;
+        for (const [e, n] of score)
+            if (n > bestLen)
+                [best, bestLen] = [e, n];
+        return best;
+    }
+
+    function getBlocks({min_p_chars = 40, min_li_chars = 25, max_blocks = 400, max_chars = 80000}) {
+        const root = contentRoot();
+        const out = [];
+        let total = 0;
+        for (const el of root.querySelectorAll(BLOCK_SEL)) {
+            if (out.length >= max_blocks || total >= max_chars)
+                break;
+            const tag = el.tagName;
+            const heading = /^H[1-6]$/.test(tag) || el.getAttribute('role') === 'heading';
+            // nested blocks: take the inner one (li > p, blockquote > p), skip the wrapper
+            if (!heading && el.querySelector('p, li, blockquote, h1, h2, h3, h4, h5, h6'))
+                continue;
+            if (!heading && el.parentElement?.closest('p, h1, h2, h3, h4, h5, h6'))
+                continue;
+            if (skipped(el, root) || !visible(el))
+                continue;
+            const text = textMap(el).text;
+            const kind = heading ? 'h' : (tag === 'LI' ? 'li' : 'p');
+            if (kind === 'h' && (text.length < 2 || text.length > 200))
+                continue;
+            if (kind === 'p' && (text.length < min_p_chars || !text.includes(' ')))
+                continue;
+            if (kind === 'li' && text.length < min_li_chars)
+                continue;
+            if (kind !== 'h' && linkDensity(el, text.length) > (kind === 'li' ? 0.5 : 0.8))
+                continue;
+            const r = el.getBoundingClientRect();
+            const level = heading ? (Number(tag[1]) || Number(el.getAttribute('aria-level')) || 2) : 0;
+            out.push({id: idOf(el), kind, level, text, rect: rectOf(r), in_view: inView(r)});
+            total += text.length;
+        }
+        return {blocks: out, title: document.title, url: location.href, view: view()};
+    }
+
+    // Visual lines of an element: [{start, end, rect}] with offsets into textMap(el).text.
+    function lineRanges({element_id, max_lines = 60}) {
+        const el = byId(element_id);
+        const {text, pos} = textMap(el, true);
+        const lines = [];
+        let cur = null;
+        const range = document.createRange();
+        for (let i = 0; i < text.length && lines.length < max_lines; i++) {
+            if (i > 0 && text[i - 1] !== ' ')
+                continue;   // word starts only
+            range.setStart(pos[i][0], pos[i][1]);
+            range.setEnd(pos[i][0], pos[i][1] + 1);
+            const r = range.getBoundingClientRect();
+            if (r.height <= 0)
+                continue;
+            if (!cur || r.top > cur.top + r.height / 2) {
+                if (cur)
+                    lines.push({start: cur.start, end: i});
+                cur = {start: i, top: r.top};
+            }
+        }
+        if (cur && lines.length < max_lines)
+            lines.push({start: cur.start, end: text.length});
+        for (const ln of lines) {
+            while (ln.end > ln.start && text[ln.end - 1] === ' ')
+                ln.end--;
+            range.setStart(pos[ln.start][0], pos[ln.start][1]);
+            range.setEnd(pos[ln.end - 1][0], pos[ln.end - 1][1] + 1);
+            ln.rect = rectOf(range.getBoundingClientRect());
+        }
+        return {lines: lines.filter(l => l.end > l.start), view: view()};
+    }
+
     function selectRange({element_id, start, end}) {
         const el = byId(element_id);
         if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
@@ -268,6 +421,8 @@ if (!window.__kikuBridge) {
         get_viewport: () => ({view: view()}),
         get_elements: getElements,
         get_paragraphs: getParagraphs,
+        get_blocks: getBlocks,
+        line_ranges: lineRanges,
         select_range: selectRange,
         clear_selection: () => {
             window.getSelection().removeAllRanges();
