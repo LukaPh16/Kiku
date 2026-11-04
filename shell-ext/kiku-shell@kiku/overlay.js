@@ -114,18 +114,37 @@ export class Overlay {
         return this._layer.visible && this._layer.opacity > 0;
     }
 
-    // Start spot: bottom-right of the primary monitor.
-    _goHome() {
+    // Start spot: bottom-right of the primary monitor. null if there is no monitor.
+    _homePos() {
         const m = Main.layoutManager.primaryMonitor;
+        if (!m)
+            return null;
+        return [Math.round(m.x + m.width - px(ICON_SIZE + 40)),
+            Math.round(m.y + m.height - px(ICON_SIZE + 80))];
+    }
+
+    // Jump to home (used on show).
+    _goHome() {
         this.followPointer(false);
         this._kiku.remove_all_transitions();
         this._target = null;
-        if (m) {
-            this._kiku.set_position(
-                Math.round(m.x + m.width - px(ICON_SIZE + 40)),
-                Math.round(m.y + m.height - px(ICON_SIZE + 80)));
-        }
+        const home = this._homePos();
+        if (home)
+            this._kiku.set_position(...home);
         this._needHome = false;
+    }
+
+    // Ease back to home after a task. Resolves true when there (or already there).
+    goHome() {
+        this.followPointer(false);
+        this._target = null;
+        const home = this._homePos();
+        if (!home || (this._kiku.x === home[0] && this._kiku.y === home[1]))
+            return Promise.resolve(true);
+        this._raise();
+        const d = Math.hypot(home[0] - this._kiku.x, home[1] - this._kiku.y) / uiScale();
+        const ms = Math.round(MOVE_MIN_MS + (MOVE_MAX_MS - MOVE_MIN_MS) * Math.min(1, d / MOVE_FULL_PX));
+        return ease(this._kiku, {x: home[0], y: home[1], duration: ms, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
     }
 
     show() {

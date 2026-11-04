@@ -25,6 +25,7 @@ const IFACE = `
       <arg type="d" name="x" direction="in"/>
       <arg type="d" name="y" direction="in"/>
     </method>
+    <method name="GoHome"/>
     <method name="Hover">
       <arg type="d" name="x" direction="in"/>
       <arg type="d" name="y" direction="in"/>
@@ -167,6 +168,10 @@ class Service {
 
     MoveToAsync([x, y], inv) {
         reply(inv, this._o.moveTo(x, y));
+    }
+
+    GoHomeAsync(_params, inv) {
+        reply(inv, this._o.goHome());
     }
 
     HoverAsync([x, y, ms], inv) {

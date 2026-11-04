@@ -102,6 +102,7 @@ def main():
                 ov.show_caption("")   # page answers are captioned while spoken
             log(f"turn: {route['via']} {route['tool']}, heard -> spoken end {(time.monotonic() - t) * 1000:.0f} ms")
             set_state("idle")
+            ov.go_home(wait=False)   # task done: back to the start spot
     except KeyboardInterrupt:
         out.stop()
     src.close()

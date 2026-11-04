@@ -120,6 +120,10 @@ class Overlay:
         """Ease Kiku's icon next to (x, y). With wait=True returns once it arrived."""
         self._do("MoveTo", "dd", (float(x), float(y)), wait, ms=400)
 
+    def go_home(self, wait=True):
+        """Ease Kiku's icon back to its start spot (bottom-right of the primary monitor)."""
+        self._do("GoHome", wait=wait, ms=400)
+
     def hover(self, x, y, ms, wait=True):
         """Move to (x, y) and stay for ms."""
         self._do("Hover", "ddu", (float(x), float(y), int(ms)), wait, ms=400 + ms)

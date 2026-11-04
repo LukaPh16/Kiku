@@ -503,15 +503,18 @@ def _show_body(body):
 
 
 def _read(ctx, e):
-    url = _url()
-    if not is_gmail(url):
-        raise _Fail("Gmail isn't the open tab anymore.")
-    if is_open(url):
+    if not is_gmail(_url()):
+        _log("Gmail isn't the active tab; switching to it (or opening it in a new tab)")
+        _ensure_gmail(ctx)
+    if is_open(_url()):
         _back_to_list()
+    url = _url()
     row = _find_row(e)
-    if row is None and _listed["contact"]:
-        _log("row not on screen; searching again")
-        _search(_ensure_gmail(ctx), search_query(_listed["contact"]))
+    contact = _listed["contact"] or e.get("email") or e.get("sender")
+    if row is None and contact:
+        _log(f"row not on screen; searching for {contact!r}")
+        _search(_ensure_gmail(ctx), search_query(contact))
+        url = _url()
         row = _find_row(e)
     if row is None:
         raise _Fail("I can't find that email on the screen anymore.")
