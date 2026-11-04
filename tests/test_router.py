@@ -126,7 +126,8 @@ def test_followup_uses_focus():
     reply, route = router.handle("Read the second one.")
     assert (route["tool"], route["args"], route["via"]) == ("read_email", {"n": 2}, "rule"), route
     reply, route = router.handle("open youtube")
-    assert router.ctx.focus["page"] == "https://www.youtube.com", router.ctx.focus
+    # open_website is real now (needs kiku-shell); tests/test_browser.py covers its focus update.
+    assert (route["tool"], route["args"]) == ("open_website", {"site": "youtube"}), route
     assert len(router.ctx.turns) == 3
 
 

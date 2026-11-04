@@ -67,6 +67,7 @@ venv/bin/python -m control.locate_debug "Firefox"            # highlight what wa
 venv/bin/python -m control.locate_debug "Save" --source atspi
 venv/bin/python -m control.locate_debug --list               # windows, dock icons, overview state
 venv/bin/python -m tests.test_open_app                       # app name matching
+venv/bin/python -m tests.test_browser                        # site names, geometry, bridge (no Firefox needed)
 ```
 
 After changing `shell-ext/`, log out and back in (Wayland can't reload the shell in place).
@@ -89,6 +90,69 @@ dbus-run-session -- env XDG_CONFIG_HOME=$T/config XDG_DATA_HOME=$T/data XDG_RUNT
 ```
 
 Snap apps (Spotify, Firefox) don't start in it (no systemd); GNOME apps do.
+
+## Firefox bridge
+
+`browser/extension/` is a Firefox WebExtension (Manifest V2, persistent background page) that connects
+to Kiku's WebSocket at `ws://127.0.0.1:8766` (`BROWSER_PORT` in `config.py`) and authenticates with a
+token. Kiku uses it to read the current tab (URL, load state, elements with their rects, paragraphs),
+select text, scroll, and click. The bridge only listens on localhost and only accepts
+`moz-extension://` origins with the right token.
+
+The token is generated on first run and kept in `secrets/browser_token`. To print it:
+
+```sh
+venv/bin/python -m browser.bridge --token     # port + token
+```
+
+### Load the extension for development (temporary)
+
+1. Open `about:debugging#/runtime/this-firefox`, then **Load Temporary Add-on...**, and pick `browser/extension/manifest.json`.
+2. The options page opens (or go to `about:addons`, select Kiku Bridge, then Preferences). Paste the port and token, then click Save.
+3. Check it: `venv/bin/python -m browser.bridge` prints the current tab once the extension connects.
+
+Temporary add-ons are removed when Firefox restarts. After editing the extension, click **Reload** on the
+`about:debugging` page.
+
+### Load it permanently
+
+Release Firefox (including the Ubuntu snap) only installs **signed** extensions. Your options:
+
+- **Self-distributed signing on AMO (recommended).** This is free, automatic and unlisted (it isn't published). Create API keys at
+  <https://addons.mozilla.org/developers/addon/api/key/>, then:
+  ```sh
+  npx web-ext sign --source-dir browser/extension --channel unlisted \
+      --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
+  ```
+  Install the `.xpi` it writes to `web-ext-artifacts/` via `about:addons`, then the gear menu, then **Install Add-on From File...**
+  The add-on id (`kiku-bridge@kiku` in `manifest.json`) stays the same, so the saved token survives updates.
+  Bump `version` in `manifest.json` before each new signing.
+- **Firefox Developer Edition, Nightly or an unbranded build.** Set `xpinstall.signatures.required` to `false` in
+  `about:config`, zip the folder (`cd browser/extension && zip -r ../kiku-bridge.xpi .`) and install it from file.
+  This setting is ignored by release Firefox.
+
+### Check the coordinates
+
+Page rects are viewport CSS px. Kiku converts them to global screen px using the Firefox window frame
+from kiku-shell, the viewport size from the extension, and `devicePixelRatio / monitor scale`
+(see `browser/geometry.py`). It assumes the toolbars are on top: an open sidebar, the find bar or docked
+devtools will shift the result. To see it on screen (stop `main.py` first, because both use the port):
+
+```sh
+venv/bin/python -m browser.debug                      # outlines the viewport, then the visible paragraphs
+venv/bin/python -m browser.debug --text "Sign in"     # elements by visible text
+venv/bin/python -m browser.debug --role link --limit 3
+venv/bin/python -m browser.debug --select 0 0 40      # selects text in paragraph 0 and outlines it
+```
+
+Each outline should sit exactly on the element. Try it on both monitors and at a page zoom other than 100%.
+
+### open_website
+
+`./main.py --text`, then try "open wikipedia", "go to reddit.com", or "open the weather site" (this one searches).
+Kiku focuses Firefox (opening it if needed), moves to the address bar, presses Ctrl+L, types the site visibly,
+presses Enter and waits for the page to load through the bridge. Without the extension it still types the
+site, but it can't tell when the page has loaded. Spoken names map to URLs through `KNOWN_SITES` in `config.py`.
 
 ## Developing the GNOME Shell extension (Wayland)
 

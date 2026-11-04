@@ -1,8 +1,7 @@
-"""Stub tools (open_app is real now, see tools/open_app.py): print their args and update focus so follow-ups ("read the second one") work.
+"""Stub tools (open_app and open_website are real now, see tools/): print their args and update focus so follow-ups ("read the second one") work.
 
-Replaced by real tools (open_app, open_website, page_reader, gmail) in later steps.
+Replaced by real tools (page_reader, gmail) in later steps.
 """
-import config
 from tools.registry import register
 
 
@@ -14,16 +13,6 @@ def _ordinal(n):
     if n == -1:
         return "last"
     return {1: "first", 2: "second", 3: "third"}.get(n, f"number {n}")
-
-
-@register("open_website", "Open a website in Firefox (name or domain)", {"site": {"type": "string"}})
-def open_website(ctx, site):
-    url = config.KNOWN_SITES.get(site.lower())
-    if url is None:
-        url = site if "://" in site else f"https://{site if '.' in site else site + '.com'}"
-    _stub("open_website", site=site, url=url)
-    ctx.focus.update(app="firefox", page=url)
-    return f"Opening {site}."
 
 
 @register("analyze_paragraph", "Analyze or summarize the nth paragraph of the current web page (-1 = last)",

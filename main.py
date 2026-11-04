@@ -43,12 +43,17 @@ def main():
 
     from brain.llm import Llm
     from brain.router import Router
+    from browser.bridge import Bridge
     from control.actions import Actions
     from control.locate import Locator
-    from tools import open_app
+    from tools import open_app, open_website
     from voice.sources import LocalMic, LocalSpeaker, TextConsole
     actions = Actions(ov)
-    open_app.init(ov, actions, Locator(ov))
+    locator = Locator(ov)
+    open_app.init(ov, actions, locator)
+    bridge = Bridge()
+    bridge.start()   # the Firefox extension connects whenever Firefox runs
+    open_website.init(ov, actions, locator, bridge)
     router = Router(Llm())
     out = LocalSpeaker(play=not args.mute)
     src = TextConsole(set_state) if args.text else LocalMic(set_state)
@@ -86,6 +91,7 @@ def main():
     except KeyboardInterrupt:
         out.stop()
     src.close()
+    bridge.stop()
     if ov.available:
         ov.hide()
     ov.close()

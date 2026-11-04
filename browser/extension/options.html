@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font: 14px sans-serif; margin: 16px; max-width: 420px; }
+  label { display: block; margin: 10px 0 4px; }
+  input { width: 100%; box-sizing: border-box; padding: 4px; font-family: monospace; }
+  button { margin-top: 12px; }
+  #status { margin-top: 10px; color: #555; }
+</style>
+</head>
+<body>
+  <p>Get these with <code>venv/bin/python -m browser.bridge --token</code> in the Kiku folder.</p>
+  <label for="port">Port</label>
+  <input id="port" type="number" value="8766">
+  <label for="token">Token</label>
+  <input id="token" type="text" autocomplete="off">
+  <button id="save">Save</button>
+  <div id="status"></div>
+  <script src="options.js"></script>
+</body>
+</html>

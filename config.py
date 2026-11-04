@@ -109,3 +109,31 @@ SPEAKER_DEVICE = None        # sounddevice output device; None = system default
 IO_SOURCE = "local"
 REMOTE_HOST = "0.0.0.0"
 REMOTE_PORT = 8765
+
+# Firefox bridge (browser/): the WebExtension connects to this WebSocket and must send the token.
+# The token is made once and kept in secrets/browser_token; paste it into the extension's options.
+BROWSER_HOST = "127.0.0.1"
+BROWSER_PORT = 8766
+BROWSER_TOKEN_FILE = SECRETS_DIR / "browser_token"
+
+
+def _browser_token():
+    import secrets
+    try:
+        return BROWSER_TOKEN_FILE.read_text().strip()
+    except FileNotFoundError:
+        token = secrets.token_urlsafe(24)
+        BROWSER_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        BROWSER_TOKEN_FILE.write_text(token + "\n")
+        BROWSER_TOKEN_FILE.chmod(0o600)
+        return token
+
+
+BROWSER_TOKEN = _browser_token()
+BROWSER_CALL_TIMEOUT_S = 5.0     # default timeout for one extension command
+BROWSER_CONNECT_WAIT_S = 8.0     # after Firefox starts, wait this long for the extension to connect
+WEB_LOAD_TIMEOUT_S = 15.0        # open_website: wait this long for the page to finish loading
+FIREFOX_APP = "firefox"          # spoken app name handed to open_app
+# AT-SPI name of Firefox's address bar (needs toolkit-accessibility; else Ctrl+L + an estimate).
+# Fuzzy-matched, so "Search with Google or enter address" matches too.
+URLBAR_NAME = "Search or enter address"

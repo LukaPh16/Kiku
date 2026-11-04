@@ -10,3 +10,5 @@ secrets/
 *token*.json
 .env
 gschemas.compiled
+*.xpi
+web-ext-artifacts/

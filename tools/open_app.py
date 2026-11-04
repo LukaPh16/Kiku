@@ -90,6 +90,20 @@ def open_app(ctx, app):
     return reply
 
 
+def ensure_open(spoken):
+    """For other tools: open or switch to an app. Returns (app dict, launched: bool).
+    Raises RuntimeError(text to say) if it can't; Aborted passes through. Caller calls begin()."""
+    apps = _shell.list_apps() if _shell else []
+    if not apps:
+        raise RuntimeError("I can't reach kiku-shell, so I can't open apps")
+    match = resolve(spoken, apps, {d["app_id"] for d in _shell.dash_icons()})
+    if isinstance(match, str):
+        raise RuntimeError(match)
+    reply = _open(match)
+    _log(reply)
+    return match, reply.startswith("Opened")
+
+
 def _title_bar(w):
     f = w["frame"]
     return Target(w["title"], f["x"], f["y"], f["width"], min(40, f["height"]), "window", 1.0, {"window": w})

@@ -7,3 +7,4 @@ pocket-tts>=4,<5
 sounddevice>=0.5,<1
 numpy>=2,<3
 rapidocr>=3,<4             # OCR fallback in control/locate.py (onnxruntime engine)
+websockets>=15,<18         # Firefox bridge (browser/bridge.py)

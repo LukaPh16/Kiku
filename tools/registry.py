@@ -74,4 +74,5 @@ def describe():
 
 # Register tools. Stubs print their args; real ones replace them step by step.
 import tools.open_app  # noqa: E402,F401
+import tools.open_website  # noqa: E402,F401
 import tools.stubs  # noqa: E402,F401
