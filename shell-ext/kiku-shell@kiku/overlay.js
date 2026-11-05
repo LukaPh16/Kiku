@@ -7,11 +7,12 @@ import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+// Defaults; a client overrides icon size and move times with Configure (config.py OVERLAY_*).
 const ICON_SIZE = 64;       // logical px on screen (assets are 96px for HiDPI)
 const GAP = 6;              // icon sits this far above-right of the target point
 const MOVE_MIN_MS = 120;
 const MOVE_MAX_MS = 350;
-const MOVE_FULL_PX = 1500;  // distance (logical px) that gets MOVE_MAX_MS
+const MOVE_FULL_PX = 1500;  // distance (logical px) that gets the max move time
 const FADE_MS = 120;
 const FOLLOW_TAU_MS = 45;   // follow smoothing: lower = tighter to the pointer
 const ACCENT = 'rgba(176, 0, 254, 0.9)';
@@ -63,8 +64,16 @@ function icon(path, name) {
     return new Gio.FileIcon({file: Gio.File.new_for_path(`${path}/assets/${name}.png`)});
 }
 
+function clamp(v, lo, hi, fallback) {
+    return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
+}
+
 export class Overlay {
     constructor(extPath) {
+        this._iconSize = ICON_SIZE;
+        this._moveMin = MOVE_MIN_MS;
+        this._moveMax = MOVE_MAX_MS;
+        this._gone = false;   // actors destroyed (disable, or the shell tearing down the stage)
         this._idleIcon = icon(extPath, 'idle');
         this._actionIcon = icon(extPath, 'action');
         this._timers = new Map();   // GLib source id -> resolve
@@ -76,7 +85,7 @@ export class Overlay {
         // Hidden until a client calls Show (see extension.js).
         this._layer = new Clutter.Actor({name: 'kiku-overlay', reactive: false, visible: false});
         this._kiku = new St.Widget({reactive: false});
-        this._face = new St.Icon({gicon: this._idleIcon, icon_size: ICON_SIZE, reactive: false});
+        this._face = new St.Icon({gicon: this._idleIcon, icon_size: this._iconSize, reactive: false});
         this._face.set_pivot_point(0.5, 0.5);
         this._caption = new St.Label({
             reactive: false,
@@ -96,6 +105,12 @@ export class Overlay {
 
         const ui = Main.layoutManager.uiGroup;
         ui.add_child(this._layer);
+        // At logout the shell can destroy uiGroup before disable(); later D-Bus calls must not touch
+        // the disposed actors (that logged "has been already disposed" errors).
+        this._layer.connect('destroy', () => {
+            this._gone = true;
+            this._release();
+        });
         // Stay above app windows. A popup being added (child-added) isn't the only thing that changes
         // the stacking: windows restacking or the overview closing can put the window group above us,
         // which hid Kiku behind apps (visible only on the desktop / in the overview / after Alt+Tab).
@@ -105,13 +120,29 @@ export class Overlay {
         this._raise();
 
         this._needHome = true;   // next show() starts from the home spot
-        this._caption.set_position(0, px(ICON_SIZE + 4));
+        this._caption.set_position(0, px(this._iconSize + 4));
         this.setState('idle');
         console.log('[KIKU] overlay ready');
     }
 
     get shown() {
-        return this._layer.visible && this._layer.opacity > 0;
+        return !this._gone && this._layer.visible && this._layer.opacity > 0;
+    }
+
+    // {icon_size (logical px), move_min_ms, move_max_ms}; missing or invalid values keep the current ones.
+    configure(cfg) {
+        if (this._gone)
+            return;
+        this._iconSize = Math.round(clamp(cfg.icon_size, 16, 256, this._iconSize));
+        this._moveMin = Math.round(clamp(cfg.move_min_ms, 0, 3000, this._moveMin));
+        this._moveMax = Math.round(clamp(cfg.move_max_ms, this._moveMin, 3000, Math.max(this._moveMax, this._moveMin)));
+        this._face.icon_size = this._iconSize;
+        this._caption.set_position(0, px(this._iconSize + 4));
+        console.log(`[KIKU] overlay: icon ${this._iconSize}px, moves ${this._moveMin}-${this._moveMax} ms`);
+    }
+
+    _moveMs(dist) {
+        return Math.round(this._moveMin + (this._moveMax - this._moveMin) * Math.min(1, dist / MOVE_FULL_PX));
     }
 
     // Start spot: bottom-right of the primary monitor. null if there is no monitor.
@@ -119,8 +150,8 @@ export class Overlay {
         const m = Main.layoutManager.primaryMonitor;
         if (!m)
             return null;
-        return [Math.round(m.x + m.width - px(ICON_SIZE + 40)),
-            Math.round(m.y + m.height - px(ICON_SIZE + 80))];
+        return [Math.round(m.x + m.width - px(this._iconSize + 40)),
+            Math.round(m.y + m.height - px(this._iconSize + 80))];
     }
 
     // Jump to home (used on show).
@@ -136,6 +167,8 @@ export class Overlay {
 
     // Ease back to home after a task. Resolves true when there (or already there).
     goHome() {
+        if (this._gone)
+            return Promise.resolve(false);
         this.followPointer(false);
         this._target = null;
         const home = this._homePos();
@@ -143,11 +176,13 @@ export class Overlay {
             return Promise.resolve(true);
         this._raise();
         const d = Math.hypot(home[0] - this._kiku.x, home[1] - this._kiku.y) / uiScale();
-        const ms = Math.round(MOVE_MIN_MS + (MOVE_MAX_MS - MOVE_MIN_MS) * Math.min(1, d / MOVE_FULL_PX));
-        return ease(this._kiku, {x: home[0], y: home[1], duration: ms, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+        return ease(this._kiku, {x: home[0], y: home[1], duration: this._moveMs(d),
+            mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
     }
 
     show() {
+        if (this._gone)
+            return;
         const l = this._layer;
         l.remove_all_transitions();
         if (!l.visible || this._needHome) {   // fresh start (also mid fade-out): from home
@@ -165,7 +200,7 @@ export class Overlay {
 
     hide() {
         const l = this._layer;
-        if (!l.visible)
+        if (this._gone || !l.visible)
             return;
         this.abort();
         this._needHome = true;
@@ -183,7 +218,7 @@ export class Overlay {
     }
 
     _iconPosFor(x, y) {
-        const s = px(ICON_SIZE), g = px(GAP), m = monitorAt(x, y);
+        const s = px(this._iconSize), g = px(GAP), m = monitorAt(x, y);
         let ix = x + g, iy = y - g - s;
         if (m && ix + s > m.x + m.width)
             ix = x - g - s;   // no room on the right: go left
@@ -204,17 +239,25 @@ export class Overlay {
     }
 
     moveTo(x, y) {
+        if (this._gone)
+            return Promise.resolve(false);
         this._raise();
         this.followPointer(false);
         const [ix, iy] = this._iconPosFor(x, y);
         this._target = [x, y];
         const d = Math.hypot(ix - this._kiku.x, iy - this._kiku.y) / uiScale();
-        const ms = Math.round(MOVE_MIN_MS + (MOVE_MAX_MS - MOVE_MIN_MS) * Math.min(1, d / MOVE_FULL_PX));
-        return ease(this._kiku, {x: ix, y: iy, duration: ms, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+        if (d < 1) {   // already there: don't spend a minimum-length ease on nothing
+            this._kiku.remove_all_transitions();
+            this._kiku.set_position(ix, iy);
+            return Promise.resolve(true);
+        }
+        return ease(this._kiku, {x: ix, y: iy, duration: this._moveMs(d), mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
     }
 
     // Track the pointer every frame (synced to the display) with frame-rate independent smoothing.
     followPointer(on) {
+        if (this._gone)
+            return;
         if (!on) {
             this._follow?.stop();
             this._follow = null;
@@ -251,8 +294,10 @@ export class Overlay {
     }
 
     clickPulse() {
+        if (this._gone)
+            return;
         this._raise();
-        const [x, y] = this._target ?? [this._kiku.x, this._kiku.y + px(ICON_SIZE)];
+        const [x, y] = this._target ?? [this._kiku.x, this._kiku.y + px(this._iconSize)];
         const size = px(18);
         const ring = new St.Widget({
             reactive: false,
@@ -285,6 +330,8 @@ export class Overlay {
     setState(s) {
         if (!STATES.includes(s))
             return false;
+        if (this._gone)
+            return true;
         this._raise();
         const f = this._face;
         f.remove_all_transitions();
@@ -314,6 +361,8 @@ export class Overlay {
     }
 
     highlightRect(x, y, w, h) {
+        if (this._gone)
+            return;
         this._raise();
         const hl = this._highlight;
         hl.set({x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h)});
@@ -326,13 +375,15 @@ export class Overlay {
 
     clearHighlight() {
         const hl = this._highlight;
-        if (!hl.visible)
+        if (this._gone || !hl.visible)
             return;
         ease(hl, {opacity: 0, duration: FADE_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD})
             .then(done => done && hl.hide());
     }
 
     async scanRect(x, y, w, h, ms) {
+        if (this._gone)
+            return false;
         this._raise();
         const frame = new St.Widget({
             reactive: false,
@@ -361,6 +412,8 @@ export class Overlay {
     }
 
     showCaption(text) {
+        if (this._gone)
+            return;
         if (text)
             this._raise();
         this._caption.text = text;
@@ -383,6 +436,8 @@ export class Overlay {
 
     // Panic: stop everything now. Pending MoveTo/Hover/ScanRect calls return early.
     abort() {
+        if (this._gone)
+            return;
         this.followPointer(false);
         this._kiku.remove_all_transitions();
         for (const [id, resolve] of this._timers) {
@@ -398,17 +453,30 @@ export class Overlay {
         this.setState('idle');
     }
 
-    destroy() {
-        this.abort();
-        this._layer.remove_all_transitions();
-        this._face.remove_all_transitions();
+    // Everything outside our actors: GLib sources, the follow timeline, signal handlers. Pending
+    // MoveTo/Hover/ScanRect promises resolve false so their D-Bus calls return.
+    _release() {
+        for (const [id, resolve] of this._timers) {
+            GLib.source_remove(id);
+            resolve(false);
+        }
+        this._timers.clear();
         if (this._talkTimer)
             GLib.source_remove(this._talkTimer);
         this._talkTimer = 0;
+        this._follow?.stop();
+        this._follow = null;
+        this._transient.clear();
         Main.layoutManager.uiGroup.disconnectObject(this);
         global.display.disconnectObject(this);
         Main.overview.disconnectObject(this);
-        this._layer.destroy();
+    }
+
+    destroy() {
+        this.abort();
+        this._release();
+        if (!this._gone)
+            this._layer.destroy();   // its destroy handler runs _release() again: harmless
         this._layer = this._kiku = this._face = this._caption = this._highlight = null;
     }
 }

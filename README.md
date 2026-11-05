@@ -59,6 +59,19 @@ The faster-whisper `base.en` model downloads itself on first use (~150 MB).
 
 The extension loads at login but keeps Kiku hidden until `./kiku.py` (or any client) calls `Show`. It hides again on `Hide` or when that process exits.
 
+`./main.py` quits on Ctrl+C or "Kiku, quit" (also "exit", "shut down", "goodbye"). It stops any running
+action first, then closes the mic, speaker, Firefox bridge and overlay. A second Ctrl+C quits without waiting.
+
+With `PROFILE = True` in `config.py`, a stage timing table is printed after startup and after every turn
+(`perf.py`: stage, start offset in ms, duration, share of the turn, count).
+
+Overlay look, in `config.py` (sent to kiku-shell with `Configure` on every show, no re-login needed):
+`OVERLAY_SPEED` (icon motion speed factor), `OVERLAY_ICON_SIZE` (logical px), `OVERLAY_CAPTIONS` (on/off).
+
+Tool failures are spoken as short sentences. Only `control.actions.Failed("...")` messages are read out;
+any other exception is logged and replaced by "Sorry, something went wrong while ..."
+(`venv/bin/python -m tests.test_errors`).
+
 ## Desktop control
 
 ```sh
@@ -78,6 +91,7 @@ You can test the extension without logging out: run a headless GNOME Shell on a 
 with its own config dirs so it doesn't touch your settings:
 
 ```sh
+# keep $T short: the Wayland socket path ($T/run/kiku-test) must stay under 108 bytes
 T=$(mktemp -d); mkdir -p $T/data/gnome-shell/extensions $T/run; chmod 700 $T/run
 ln -s "$PWD/shell-ext/kiku-shell@kiku" $T/data/gnome-shell/extensions/
 dbus-run-session -- env XDG_CONFIG_HOME=$T/config XDG_DATA_HOME=$T/data XDG_RUNTIME_DIR=$T/run \
@@ -114,22 +128,29 @@ venv/bin/python -m browser.bridge --token     # port + token
 Temporary add-ons are removed when Firefox restarts. After editing the extension, click **Reload** on the
 `about:debugging` page.
 
-### Load it permanently
+### Install it permanently (setup)
 
-Release Firefox (including the Ubuntu snap) only installs **signed** extensions. Your options:
+Release Firefox (including the Ubuntu snap) only installs **signed** extensions, so the setup signs it once per
+version on addons.mozilla.org. Signing is free, automatic and unlisted (it isn't published). Then it installs
+the extension through Firefox's policy file, with the port and token, so there's nothing to load or paste.
 
-- **Self-distributed signing on AMO (recommended).** This is free, automatic and unlisted (it isn't published). Create API keys at
-  <https://addons.mozilla.org/developers/addon/api/key/>, then:
-  ```sh
-  npx web-ext sign --source-dir browser/extension --channel unlisted \
-      --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
-  ```
-  Install the `.xpi` it writes to `web-ext-artifacts/` via `about:addons`, then the gear menu, then **Install Add-on From File...**
-  The add-on id (`kiku-bridge@kiku` in `manifest.json`) stays the same, so the saved token survives updates.
-  Bump `version` in `manifest.json` before each new signing.
-- **Firefox Developer Edition, Nightly or an unbranded build.** Set `xpinstall.signatures.required` to `false` in
-  `about:config`, zip the folder (`cd browser/extension && zip -r ../kiku-bridge.xpi .`) and install it from file.
-  This setting is ignored by release Firefox.
+1. One time: create API keys at <https://addons.mozilla.org/developers/addon/api/key/> and save them:
+   ```sh
+   printf '%s\n%s\n' "JWT_ISSUER" "JWT_SECRET" > secrets/amo_api && chmod 600 secrets/amo_api
+   ```
+2. Run the setup (needs Node for `npx web-ext`, and asks for sudo to write `/etc/firefox/policies/policies.json`):
+   ```sh
+   venv/bin/python -m browser.setup_firefox             # --dry-run shows the policy and changes nothing
+   ```
+3. Restart Firefox. `about:policies` lists it as Active, and Kiku Bridge is in `about:addons` and connects by itself.
+
+After editing the extension, bump `version` in `manifest.json` and run the setup again. The new version is
+signed into `browser/dist/` and replaces the old one on the next Firefox start. Other policies already in
+`policies.json` are kept. The file is `root:<your group>`, mode 0640, because it holds the token.
+If you already have a signed `.xpi`, run `venv/bin/python -m browser.setup_firefox --xpi FILE` instead.
+
+With Firefox Developer Edition or Nightly, you can skip signing: set `xpinstall.signatures.required` to `false`
+and pass an unsigned zip of `browser/extension/` with `--xpi`.
 
 ### Check the coordinates
 

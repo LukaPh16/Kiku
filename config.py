@@ -21,13 +21,20 @@ HOTKEY_PANIC = "<Control><Alt>k"
 HOTKEY_PTT = "<Control><Alt>space"   # fires on press only (toggle-style)
 PANIC_PHRASE = "kiku stop"
 
-# Overlay motion (ms), scaled by distance
+# Print a stage timing table after every turn (perf.py)
+PROFILE = True
+
+# Overlay look. Sent to kiku-shell on every show (no re-login needed).
+OVERLAY_SPEED = 1.0          # icon motion speed: 2.0 = twice as fast (MOVE_*_MS are divided by it)
+OVERLAY_ICON_SIZE = 64       # icon size in logical px
+OVERLAY_CAPTIONS = True      # show answers as a caption under the icon
+# Icon move time (ms) at OVERLAY_SPEED 1.0, scaled by distance
 MOVE_MIN_MS = 120
 MOVE_MAX_MS = 350
 
 # Desktop control (control/, tools/open_app.py)
 HOVER_MS = 120               # icon rests on a target this long before acting
-TYPE_CPS = 40                # typing speed, characters per second (fast but visible)
+TYPE_CPS = 60                # typing speed, characters per second (fast but visible)
 APP_WAIT_S = 10.0            # wait this long for a launched app's window
 OVERVIEW_WAIT_S = 1.5        # wait for Activities to open after Super
 APP_MATCH_MIN = 0.75         # fuzzy score (0..1) needed to accept a spoken app name
@@ -50,6 +57,7 @@ OLLAMA_HOST = "http://127.0.0.1:11434"
 LLM_MODEL = "qwen3:1.7b"
 LLM_THINK = False
 LLM_KEEP_ALIVE = "30m"
+LLM_REWARM_S = 20 * 60         # idle this long: ping Ollama so the model never unloads while Kiku runs
 LLM_NUM_CTX = 2048
 LLM_MAX_TOKENS = 128          # chat replies
 LLM_INTENT_MAX_TOKENS = 64    # parse_intent JSON
@@ -144,6 +152,7 @@ PAGE_TOP_K = 3                   # chunks sent to the LLM per question
 PAGE_CONTEXT_TOKENS = 1100       # max page text per prompt (fits LLM_NUM_CTX with the reply)
 PAGE_CACHE_PAGES = 8             # parsed pages kept (per URL)
 PAGE_ANSWER_SENTENCES = 3
+PAGE_COPY_WORDS = 10             # an answer repeating this many page words in a row is asked again
 PAGE_MAX_TOKENS = 160            # reply length for page answers
 PAGE_MIN_P_CHARS = 40            # shorter <p> are not content paragraphs (empty/infobox bits)
 PAGE_CONNECT_WAIT_S = 3.0        # extension not connected yet (just started): wait this long

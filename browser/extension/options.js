@@ -7,6 +7,8 @@ async function load() {
     if (token) $('token').value = token;
     const st = await browser.runtime.sendMessage({kiku: 'status'}).catch(() => null);
     $('status').textContent = st ? `Status: ${st}` : '';
+    const managed = await browser.runtime.sendMessage({kiku: 'managed'}).catch(() => false);
+    $('managed').hidden = !managed;
 }
 
 $('save').addEventListener('click', async () => {

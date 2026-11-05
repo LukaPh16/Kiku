@@ -21,6 +21,14 @@ function log(msg) {
 
 // ---- connection ----
 
+// Port + token: set by browser/setup_firefox.py through Firefox policy (storage.managed),
+// else typed into the options page (storage.local).
+async function settings() {
+    const local = await browser.storage.local.get(['port', 'token']);
+    const managed = await browser.storage.managed.get(['port', 'token']).catch(() => ({}));
+    return {port: managed.port || local.port, token: managed.token || local.token, managed: !!managed.token};
+}
+
 async function connect() {
     clearTimeout(retryTimer);
     if (ws) {
@@ -28,7 +36,7 @@ async function connect() {
         ws.close();
         ws = null;
     }
-    const {port, token} = await browser.storage.local.get(['port', 'token']);
+    const {port, token} = await settings();
     if (!token) {
         status = 'no token set (open the add-on options)';
         log(status);
@@ -167,11 +175,13 @@ browser.storage.onChanged.addListener((changes, area) => {
 browser.runtime.onMessage.addListener(msg => {
     if (msg && msg.kiku === 'status')
         return Promise.resolve(status);
+    if (msg && msg.kiku === 'managed')
+        return settings().then(s => s.managed);
     return undefined;
 });
 
 browser.runtime.onInstalled.addListener(async () => {
-    const {token} = await browser.storage.local.get('token');
+    const {token} = await settings();
     if (!token)
         browser.runtime.openOptionsPage();
 });

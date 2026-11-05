@@ -66,16 +66,19 @@ class Bridge:
                                    ping_interval=20, ping_timeout=20)
 
     def stop(self):
+        """Close the extension connection and the server, end the thread. Safe to call twice."""
         async def _close():
             if self._server is not None:
-                self._server.close()
+                self._server.close()   # also closes the extension's connection (it reconnects later)
                 await self._server.wait_closed()
         if self._thread and self._thread.is_alive():
             try:
                 asyncio.run_coroutine_threadsafe(_close(), self._loop).result(3)
-            except Exception:
-                pass
+            except Exception as e:
+                _log(f"close: {e!r}")
             self._loop.call_soon_threadsafe(self._loop.stop)
+            self._thread.join(2)
+            _log("stopped")
 
     @property
     def connected(self):

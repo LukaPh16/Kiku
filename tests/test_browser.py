@@ -320,7 +320,26 @@ def test_bridge():
         b.stop()
 
 
+def test_setup_policy():
+    from browser import setup_firefox as sf
+    assert sf.ext_id() == "kiku-bridge@kiku"
+    assert sf.xpi_path("1.2.3").name == "kiku-bridge-1.2.3.xpi"
+    existing = {"policies": {"DisableTelemetry": True,
+                             "ExtensionSettings": {"other@x": {"installation_mode": "blocked"}}}}
+    doc = sf.build_policy(existing, "/tmp/k.xpi", "kiku-bridge@kiku", 8766, "tok")
+    pol = doc["policies"]
+    assert pol["DisableTelemetry"] is True and pol["ExtensionSettings"]["other@x"]["installation_mode"] == "blocked"
+    assert pol["ExtensionSettings"]["kiku-bridge@kiku"] == {"installation_mode": "force_installed",
+                                                             "install_url": "file:///tmp/k.xpi"}
+    assert pol["3rdparty"]["Extensions"]["kiku-bridge@kiku"] == {"port": 8766, "token": "tok"}
+    assert "ExtensionSettings" not in existing["policies"]["ExtensionSettings"]["other@x"]   # input untouched
+    assert "kiku-bridge@kiku" not in existing["policies"]["ExtensionSettings"]
+    assert sf.build_policy({}, "/tmp/k.xpi", "a@b", 1, "t")["policies"]["3rdparty"]["Extensions"]["a@b"]["port"] == 1
+    log("setup policy ok")
+
+
 if __name__ == "__main__":
+    test_setup_policy()
     test_resolve_site()
     test_open_website_flow()
     test_geometry()

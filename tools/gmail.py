@@ -31,7 +31,7 @@ from browser import geometry
 from browser.bridge import BridgeError
 from control.actions import Aborted
 from tools import open_website, page_reader
-from tools.registry import Spoken, register
+from tools.registry import Spoken, register, sorry
 
 # ---- selectors (all of them) ----
 # Lists are tried in order; the first with a visible match wins.
@@ -254,7 +254,7 @@ def _ready():
     try:
         open_website.focus_firefox()
     except RuntimeError as e:
-        return f"Sorry, {e}."
+        return sorry(e, "I can't bring Firefox up")
     if not _bridge.connected and not _bridge.wait_connected(config.PAGE_CONNECT_WAIT_S):
         return "The Firefox extension isn't connected, so I can't see Gmail."
     return None

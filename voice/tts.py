@@ -9,6 +9,7 @@ import threading
 import time
 
 import config
+import perf
 
 _BLOCK = 512   # samples per output callback
 
@@ -30,7 +31,8 @@ class Tts:
             pass
         _log(f"loaded pocket-tts ({config.TTS_VOICE}) + warm-up in {(time.monotonic() - t) * 1000:.0f} ms")
         self._jobs = queue.Queue()
-        threading.Thread(target=self._worker, name="kiku-tts", daemon=True).start()
+        self._thread = threading.Thread(target=self._worker, name="kiku-tts", daemon=True)
+        self._thread.start()
 
     def speak(self, text):
         """Say text; returns when done or stopped."""
@@ -42,9 +44,18 @@ class Tts:
     def stop(self):
         self._stop.set()
 
+    def close(self):
+        """Stop speaking, close the audio stream and end the worker."""
+        self._stop.set()
+        self._jobs.put(None)
+        self._thread.join(2)
+
     def _worker(self):
         while True:
-            text, done = self._jobs.get()
+            job = self._jobs.get()
+            if job is None:
+                return
+            text, done = job
             try:
                 self._say(text)
             except Exception as e:
@@ -61,7 +72,11 @@ class Tts:
     def _say(self, text):
         t0 = time.monotonic()
         if not self.play:
-            n = sum(len(a) for a in self.synth(text))
+            n = 0
+            for a in self.synth(text):
+                if not n:
+                    perf.add("tts to first audio", t0)
+                n += len(a)
             _log(f"synth {n * 1000 // self.rate} ms audio in {(time.monotonic() - t0) * 1000:.0f} ms (muted)")
             return
         import sounddevice as sd
@@ -101,4 +116,6 @@ class Tts:
                     break
         total = (time.monotonic() - t0) * 1000
         first = (state["first"] - t0) * 1000 if state["first"] else -1
+        if state["first"]:
+            perf.add("tts to first audio", t0, state["first"])
         _log(f"{'stopped' if self._stop.is_set() else 'done'}: first audio {first:.0f} ms, total {total:.0f} ms")

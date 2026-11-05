@@ -283,7 +283,8 @@ def test_firefox_wont_focus():
     bridge, *_ = _setup([])
 
     def fail():
-        raise RuntimeError("Firefox didn't take focus")
+        from control.actions import Failed
+        raise Failed("Firefox didn't take focus")
     pr.open_website.focus_firefox = fail
     assert pr.analyze_page(Context()) == "Sorry, Firefox didn't take focus."
     assert bridge.calls == []

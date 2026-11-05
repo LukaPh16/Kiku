@@ -7,6 +7,7 @@ import re
 import time
 
 import config
+import perf
 from brain.context import Context
 from tools import registry
 
@@ -70,6 +71,10 @@ def _call(tool, **args):
 
 def _stop(m, ctx):
     return _call("stop")
+
+
+def _quit(m, ctx):
+    return _call("quit")
 
 
 def _back(m, ctx):
@@ -156,6 +161,8 @@ def _open(m, ctx):
 _EMAILWORD = r"(?:e-?mails?|mails?|messages?)"
 _PAGEWORD = r"(?:web ?page|page|article|post|site|website|wiki(?:pedia)?(?: page| article)?|text)"
 RULES = [
+    # "kiku quit": shut Kiku down (main.py). Whole utterance only: "quit firefox" is not this.
+    (r"(?:quit|exit|shut ?down|go to sleep|goodbye|good bye)(?: kiku)?", _quit),
     (r"(?:stop|stop it|stop talking|cancel|never ?mind|shut up|be quiet|quiet|enough|abort)", _stop),
     (r"(?:go )?back|(?:go )?back (?:a|one) page|(?:go to )?(?:the )?previous page", _back),
     (r"close(?: (?P<t>.+))?", _close),
@@ -225,7 +232,8 @@ def match_rules(text, ctx):
 
 
 # ---- router ----
-# Pseudo tool "clarify": Kiku asks back instead of guessing.
+# Pseudo tools (not in the registry, so the LLM can't pick them): "clarify" asks back instead of
+# guessing, "quit" says bye and main.py shuts down.
 
 _PRONOUNS = {"it", "this", "that", "them", "one"}
 # The LLM may pick these arg-less tools only if the text has one of these words.
@@ -284,10 +292,13 @@ class Router:
     def handle(self, text):
         """Route, run, remember. Returns (reply text, route dict)."""
         t0 = time.monotonic()
-        route = self.route(text)
+        with perf.stage("route"):
+            route = self.route(text)
         t1 = time.monotonic()
         if route["tool"] == "clarify":
             reply = "Which one do you mean?"
+        elif route["tool"] == "quit":
+            reply = "Bye."
         elif route["tool"] == "chat":
             if self.llm and self.llm.available:
                 reply = self.llm.chat(text, self.ctx)
@@ -296,7 +307,7 @@ class Router:
         else:
             reply = registry.run(route["tool"], route["args"], self.ctx)
         t2 = time.monotonic()
-        if route["tool"] != "stop":
+        if route["tool"] not in ("stop", "quit"):
             self.ctx.add_turn(text, reply, route["tool"])
         _log(f"route: {route['via']} -> {route['tool']} {route['args']} | route {route['ms']:.0f} ms, "
              f"{'chat' if route['tool'] == 'chat' else 'tool'} {(t2 - t1) * 1000:.0f} ms, "

@@ -55,6 +55,9 @@ const IFACE = `
     <method name="ShowCaption">
       <arg type="s" name="text" direction="in"/>
     </method>
+    <method name="Configure">
+      <arg type="s" name="json" direction="in"/>
+    </method>
     <method name="GetPointer">
       <arg type="d" name="x" direction="out"/>
       <arg type="d" name="y" direction="out"/>
@@ -207,6 +210,22 @@ class Service {
 
     ShowCaption(text) {
         this._o.showCaption(text);
+    }
+
+    // Visual settings from the client's config.py: {"icon_size": 64, "move_min_ms": 120, "move_max_ms": 350}
+    ConfigureAsync([json], inv) {
+        let cfg;
+        try {
+            cfg = JSON.parse(json);
+        } catch {
+            cfg = null;
+        }
+        if (!cfg || typeof cfg !== 'object') {
+            inv.return_dbus_error(`${ERROR}.InvalidArgs`, 'Configure wants a JSON object');
+            return;
+        }
+        this._o.configure(cfg);
+        inv.return_value(null);
     }
 
     GetPointer() {

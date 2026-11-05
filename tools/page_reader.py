@@ -16,11 +16,12 @@ import time
 import types
 
 import config
+import perf
 from browser.bridge import BridgeError
 from browser.page import Page
 from control.actions import Aborted
 from tools import open_website
-from tools.registry import register
+from tools.registry import register, sorry
 
 _shell = _actions = _bridge = _llm = _page = None
 _cache = collections.OrderedDict()   # url -> Doc
@@ -249,12 +250,13 @@ def _check_ready():
         return "Sorry, my language model is offline."
     _actions.begin()
     try:
-        open_website.focus_firefox()   # don't read it from behind the terminal
+        with perf.stage("focus firefox"):
+            open_website.focus_firefox()   # don't read it from behind the terminal
     except Aborted:
         return "Stopped."
     except RuntimeError as e:
         _log(f"can't bring Firefox up: {e}")
-        return f"Sorry, {e}."
+        return sorry(e, "I can't bring Firefox up")
     if not _bridge.connected:
         _log("waiting for the Firefox extension to connect")
         if not _bridge.wait_connected(config.PAGE_CONNECT_WAIT_S):   # it retries every 1-5 s
@@ -337,7 +339,7 @@ REPHRASE = " Your last answer copied the page word for word; say it completely i
 def _llm_answer(system, prompt, source, history=()):
     n, mt = config.PAGE_ANSWER_SENTENCES, config.PAGE_MAX_TOKENS
     a = _llm.ask(system, prompt, history, sentences=n, max_tokens=mt)
-    if copies(a, source):
+    if copies(a, source, config.PAGE_COPY_WORDS):
         _log("answer copied the page; asking again")
         a = _llm.ask(system + REPHRASE, prompt, history, sentences=n, max_tokens=mt, temperature=0.7)
     return a
@@ -361,13 +363,17 @@ def _run(ctx, doc, el, system, prompt, source, history=()):
     try:
         try:
             if el is not None:
-                _show(el)
-                _scan(el, done)
+                with perf.stage("scroll + point"):
+                    _show(el)
+                with perf.stage("scan (llm runs)"):
+                    _scan(el, done)
             else:
-                _scan_view(done)
+                with perf.stage("scan (llm runs)"):
+                    _scan_view(done)
         except BridgeError as e:
             _log(f"visuals skipped: {e}")
-        _wait_done(done, 3600)
+        with perf.stage("wait for llm"):
+            _wait_done(done, 3600)
     except Aborted:
         _log("aborted")
         return "Stopped."
@@ -409,7 +415,8 @@ def _start():
     if msg:
         return None, msg
     try:
-        doc = _load_doc()
+        with perf.stage("read page"):
+            doc = _load_doc()
     except BridgeError as e:
         _log(f"can't read the page: {e}")
         return None, "I can't read this page."

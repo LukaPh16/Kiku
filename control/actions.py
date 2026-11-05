@@ -5,10 +5,16 @@ import threading
 import time
 
 import config
+import perf
 
 
 class Aborted(Exception):
     pass
+
+
+class Failed(RuntimeError):
+    """A failure whose message is a plain sentence to say ("I couldn't switch to Files").
+    Tools say it as "Sorry, <message>." (tools/registry.sorry); other exceptions are never spoken."""
 
 
 def _log(msg):
@@ -43,10 +49,15 @@ class Actions:
     # ---- helpers ----
 
     def point_at(self, target, hover_ms=None):
-        """Move the icon next to target (Target or (x, y)) and rest briefly."""
+        """Move the icon next to target (Target or (x, y)) and rest briefly. No-op if it is already
+        resting there (several keys into the same box)."""
         self.check()
         x, y = target.center if hasattr(target, "center") else target
-        self.shell.hover(x, y, config.HOVER_MS if hover_ms is None else hover_ms)
+        at = getattr(self.shell, "at", None)
+        if isinstance(at, tuple) and abs(at[0] - x) < 2 and abs(at[1] - y) < 2:
+            return x, y
+        with perf.stage("icon move+hover"):
+            self.shell.hover(x, y, config.HOVER_MS if hover_ms is None else hover_ms)
         self.check()
         return x, y
 
@@ -65,31 +76,35 @@ class Actions:
         x, y = self.point_at(target)
         self.shell.pointer_move(x, y)
         self.shell.click_pulse()
-        ok = self.shell.click(button)
+        with perf.stage("click"):
+            ok = self.shell.click(button)
         self.check()
         if not ok:
-            raise RuntimeError("click failed")
+            raise Failed("the click didn't go through")
         _log(f"click {button} at ({x:.0f},{y:.0f}) in {(time.monotonic() - t) * 1000:.0f} ms")
 
     def type_text(self, text, target=None, cps=None):
         """Type into whatever has keyboard focus. The icon points at target (or the focused window)."""
         t = time.monotonic()
         self.point_at(target or self._focus_point())
-        skipped = self.shell.type_text(text, cps or config.TYPE_CPS)
+        with perf.stage("type"):
+            skipped = self.shell.type_text(text, cps or config.TYPE_CPS)
         if skipped == -1 or self.aborted:
             raise Aborted()
         if skipped is None:
-            raise RuntimeError("typing failed")
+            raise Failed("I couldn't type there")
         if skipped:
             _log(f"WARNING: {skipped} characters have no key on this layout")
         _log(f"typed {len(text)} chars in {(time.monotonic() - t) * 1000:.0f} ms")
 
     def key(self, combo, target=None):
         self.point_at(target or self._focus_point())
-        ok = self.shell.key_combo(combo)
+        with perf.stage("key"):
+            ok = self.shell.key_combo(combo)
         self.check()
         if not ok:
-            raise RuntimeError(f"key {combo!r} failed")
+            _log(f"key {combo!r} failed")
+            raise Failed("a key press didn't go through")
         _log(f"key {combo}")
 
     def scroll(self, dy, dx=0, target=None):
@@ -99,7 +114,7 @@ class Actions:
         ok = self.shell.scroll(dx, dy)
         self.check()
         if not ok:
-            raise RuntimeError("scroll failed")
+            raise Failed("I couldn't scroll there")
         _log(f"scroll dx={dx} dy={dy} at ({x:.0f},{y:.0f})")
 
     def wait(self, seconds):

@@ -18,6 +18,7 @@ from dbus_next.aio import MessageBus
 import config
 
 _RETRY_S = 5.0   # don't spam warnings while the extension is missing
+_RESHOW = object()   # callback-queue item: kiku-shell came back on the bus
 
 
 def _log(msg):
@@ -31,9 +32,13 @@ class Overlay:
         self._hotkey_cbs = []
         self._cb_queue = queue.Queue()
         self._warned_at = 0.0
+        self.at = None   # (x, y) the icon was last sent to; None after home/show/abort/follow
+        self._shown = False   # we called Show (re-sent when kiku-shell comes back, e.g. after unlock)
+        self._configured = None   # last Configure result (None = not tried)
         self._thread = threading.Thread(target=self._loop.run_forever, name="kiku-dbus", daemon=True)
         self._thread.start()
-        threading.Thread(target=self._run_callbacks, name="kiku-hotkeys", daemon=True).start()
+        self._cb_thread = threading.Thread(target=self._run_callbacks, name="kiku-hotkeys", daemon=True)
+        self._cb_thread.start()
         self._submit(self._connect(), timeout=5)
 
     # ---- plumbing ----
@@ -44,21 +49,42 @@ class Overlay:
         except Exception as e:
             _log(f"WARNING: no session bus ({e}); overlay disabled")
             return
-        rule = f"type='signal',interface='{config.DBUS_IFACE}',member='Hotkey'"
-        await self._bus.call(Message(destination="org.freedesktop.DBus", path="/org/freedesktop/DBus",
-                                     interface="org.freedesktop.DBus", member="AddMatch",
-                                     signature="s", body=[rule]))
+        # GNOME disables extensions while the screen is locked: kiku-shell leaves the bus and comes back
+        # hidden. NameOwnerChanged tells us to show Kiku again.
+        rules = [f"type='signal',interface='{config.DBUS_IFACE}',member='Hotkey'",
+                 f"type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='{config.DBUS_NAME}'"]
+        for rule in rules:
+            await self._bus.call(Message(destination="org.freedesktop.DBus", path="/org/freedesktop/DBus",
+                                         interface="org.freedesktop.DBus", member="AddMatch",
+                                         signature="s", body=[rule]))
         self._bus.add_message_handler(self._on_message)
 
     def _on_message(self, msg):
+        if (msg.message_type == MessageType.SIGNAL and msg.member == "NameOwnerChanged"
+                and msg.body and msg.body[0] == config.DBUS_NAME):
+            if msg.body[2]:
+                self._cb_queue.put(_RESHOW)
+            else:
+                self.at = None
+                _log("kiku-shell left the bus (screen locked or shell restarting)")
+            return
         if (msg.message_type == MessageType.SIGNAL and msg.interface == config.DBUS_IFACE
                 and msg.member == "Hotkey"):
+            if msg.body[0] == "panic":
+                self.at = None   # the shell stopped the icon wherever it was
             self._cb_queue.put(msg.body[0])
 
     def _run_callbacks(self):
         # Hotkey callbacks run here, not on the bus thread, so they may call the overlay.
         while True:
             name = self._cb_queue.get()
+            if name is None:   # close()
+                return
+            if name is _RESHOW:
+                if self._shown:
+                    _log("kiku-shell is back; showing Kiku again")
+                    self.show()
+                continue
             for cb in list(self._hotkey_cbs):
                 try:
                     cb(name)
@@ -110,26 +136,46 @@ class Overlay:
     # ---- API (mirrors org.kiku.Shell) ----
 
     def show(self):
-        """Make Kiku visible. The shell hides it again on hide() or when this process exits."""
+        """Make Kiku visible (with config.py's look). The shell hides it again on hide() or when this
+        process exits."""
+        self.at = None
+        self._shown = True
         self._do("Show")
+        self.configure()
+
+    def configure(self):
+        """Send config.OVERLAY_* to kiku-shell. Captions are handled here (show_caption)."""
+        speed = max(0.1, float(config.OVERLAY_SPEED))
+        cfg = {"icon_size": int(config.OVERLAY_ICON_SIZE),
+               "move_min_ms": round(config.MOVE_MIN_MS / speed), "move_max_ms": round(config.MOVE_MAX_MS / speed)}
+        ok = self._do("Configure", "s", (json.dumps(cfg),)) is not None
+        if not ok and self._configured is None:
+            _log("kiku-shell doesn't take visual settings yet (old version loaded): log out and back in")
+        self._configured = ok
 
     def hide(self):
+        self.at = None
+        self._shown = False
         self._do("Hide")
 
     def move_to(self, x, y, wait=True):
         """Ease Kiku's icon next to (x, y). With wait=True returns once it arrived."""
+        self.at = (float(x), float(y))
         self._do("MoveTo", "dd", (float(x), float(y)), wait, ms=400)
 
     def go_home(self, wait=True):
         """Ease Kiku's icon back to its start spot (bottom-right of the primary monitor)."""
+        self.at = None
         self._do("GoHome", wait=wait, ms=400)
 
     def hover(self, x, y, ms, wait=True):
         """Move to (x, y) and stay for ms."""
+        self.at = (float(x), float(y))
         self._do("Hover", "ddu", (float(x), float(y), int(ms)), wait, ms=400 + ms)
 
     def follow_pointer(self, on):
         """Shell-side: icon tracks the mouse every frame until off, move_to() or panic."""
+        self.at = None
         self._do("FollowPointer", "b", (bool(on),))
 
     def click_pulse(self):
@@ -149,7 +195,9 @@ class Overlay:
         self._do("ScanRect", "ddddu", (float(x), float(y), float(w), float(h), int(ms)), wait, ms=ms)
 
     def show_caption(self, text):
-        """Small label under the icon; "" hides it."""
+        """Small label under the icon; "" hides it. Off with config.OVERLAY_CAPTIONS = False."""
+        if text and not config.OVERLAY_CAPTIONS:
+            return
         self._do("ShowCaption", "s", (text,))
 
     def get_pointer(self):
@@ -222,9 +270,15 @@ class Overlay:
 
     def abort(self):
         """Same as the panic hotkey: stop motion and input, release held keys."""
+        self.at = None
         self._do("Abort")
 
     def close(self):
+        """Disconnect and stop the bus and callback threads. Call last."""
+        self._cb_queue.put(None)
         if self._bus is not None:
             self._loop.call_soon_threadsafe(self._bus.disconnect)
         self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(2)
+        if threading.current_thread() is not self._cb_thread:
+            self._cb_thread.join(2)

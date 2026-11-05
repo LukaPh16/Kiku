@@ -59,8 +59,12 @@ CASES = [
     ("Open the third message.", call("read_email", n=3)),
     ("read email number 4", call("read_email", n=4)),
     ("Read me the first email.", call("read_email", n=1)),
-    # stop / back / close
+    # stop / back / close / quit
     ("Stop.", call("stop")),
+    ("Quit.", call("quit")),
+    ("kiku quit", call("quit")),
+    ("Exit, please.", call("quit")),
+    ("shut down kiku", call("quit")),
     ("stop talking", call("stop")),
     ("never mind", call("stop")),
     ("Go back.", call("back")),
@@ -80,6 +84,7 @@ NO_RULE = [
     "Read the second one.",           # no email list in focus
     "Did you send the email?",
     "What time is it?",
+    "Quit Firefox.",                  # an app, not Kiku: goes to the LLM (close)
 ]
 
 

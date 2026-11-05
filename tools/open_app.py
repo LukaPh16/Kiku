@@ -8,9 +8,9 @@ Spoken names are fuzzy-matched to installed apps; unclear names get a question, 
 import time
 
 import config
-from control.actions import Aborted
+from control.actions import Aborted, Failed
 from control.locate import Target, text_score
-from tools.registry import register
+from tools.registry import register, sorry
 
 _shell = _actions = _locator = None
 
@@ -82,7 +82,7 @@ def open_app(ctx, app):
         return "Stopped."
     except RuntimeError as e:
         _log(f"failed: {e}")
-        return f"Sorry, {e}."
+        return sorry(e, "I couldn't open that app")
     finally:
         _shell.clear_highlight()
     _log(f"{reply} ({(time.monotonic() - t) * 1000:.0f} ms)")
@@ -92,13 +92,13 @@ def open_app(ctx, app):
 
 def ensure_open(spoken):
     """For other tools: open or switch to an app. Returns (app dict, launched: bool).
-    Raises RuntimeError(text to say) if it can't; Aborted passes through. Caller calls begin()."""
+    Raises Failed(text to say) if it can't; Aborted passes through. Caller calls begin()."""
     apps = _shell.list_apps() if _shell else []
     if not apps:
-        raise RuntimeError("I can't reach kiku-shell, so I can't open apps")
+        raise Failed("I can't reach kiku-shell, so I can't open apps")
     match = resolve(spoken, apps, {d["app_id"] for d in _shell.dash_icons()})
     if isinstance(match, str):
-        raise RuntimeError(match)
+        raise Failed(match)
     reply = _open(match)
     _log(reply)
     return match, reply.startswith("Opened")
@@ -119,7 +119,7 @@ def _open(app):
         if target:
             _actions.point_at(target)
         if not _shell.activate_window(w["id"]):
-            raise RuntimeError(f"I couldn't switch to {name}")
+            raise Failed(f"I couldn't switch to {name}")
         return f"Switched to {name}."
 
     before = {w["id"] for w in _shell.list_windows()}
@@ -132,7 +132,7 @@ def _open(app):
         _search_launch(name)
     w = _wait_window(app_id, before)
     if w is None:
-        raise RuntimeError(f"I started {name}, but no window showed up")
+        raise Failed(f"I started {name}, but no window showed up")
     _actions.point_at(_title_bar(w))
     return f"Opened {name}."
 
@@ -141,7 +141,7 @@ def _search_launch(name):
     mons = _shell.get_monitors()
     m = next((m for m in mons if m["primary"]), mons[0] if mons else None)
     if m is None:
-        raise RuntimeError("I can't see any monitor")
+        raise Failed("I can't see any monitor")
     if not _shell.overview_state().get("visible"):
         _actions.key("super", target=(m["x"] + 40, m["y"] + 16))   # Activities corner
         st = _wait_overview()
@@ -157,7 +157,8 @@ def _search_launch(name):
     _actions.wait(0.3)   # search results update asynchronously
     st = _shell.overview_state()
     if not st.get("visible") or st.get("search_text", "").strip().lower() != name.lower():
-        raise RuntimeError(f"typing into the Activities search didn't work (got {st.get('search_text')!r})")
+        _log(f"Activities search has {st.get('search_text')!r}, expected {name!r}")
+        raise Failed("typing into the Activities search didn't work")
     _actions.key("enter", target=search)
 
 
@@ -168,7 +169,7 @@ def _wait_overview():
         if st.get("visible"):
             return st
         _actions.wait(0.05)
-    raise RuntimeError("Activities didn't open after the Super key")
+    raise Failed("Activities didn't open after the Super key")
 
 
 def _wait_window(app_id, before):

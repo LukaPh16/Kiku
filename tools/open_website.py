@@ -10,12 +10,13 @@ import re
 import time
 
 import config
+import perf
 from browser import geometry
 from browser.bridge import BridgeError
-from control.actions import Aborted
+from control.actions import Aborted, Failed
 from control.locate import Target
 from tools import open_app
-from tools.registry import register
+from tools.registry import register, sorry
 
 _shell = _actions = _locator = _bridge = None
 _urlbar_cache = {}   # (window id, w, h) -> address bar rect relative to the window frame
@@ -72,7 +73,7 @@ def open_website(ctx, site):
         return "Stopped."
     except RuntimeError as e:
         _log(f"failed: {e}")
-        return f"Sorry, {e}."
+        return sorry(e, "I couldn't open that website")
     finally:
         _shell.clear_highlight()
     ctx.focus["app"] = "Firefox"
@@ -86,8 +87,10 @@ def open_website(ctx, site):
 
 
 def _open(text):
-    win = focus_firefox()
-    urlbar = _urlbar(win)
+    with perf.stage("focus firefox"):
+        win = focus_firefox()
+    with perf.stage("find address bar"):
+        urlbar = _urlbar(win)
     before = _tab_info()
     if urlbar.source == "atspi":
         _shell.highlight_rect(*urlbar.rect)
@@ -97,7 +100,8 @@ def _open(text):
     _actions.type_text(text, target=urlbar)
     _actions.key("enter", target=urlbar)
     _shell.clear_highlight()
-    return _wait_load(before)
+    with perf.stage("wait page load"):
+        return _wait_load(before)
 
 
 def is_blank(url):
@@ -108,7 +112,7 @@ def is_blank(url):
 
 def focus_firefox():
     """Focused Firefox window dict; opens/switches to Firefox if needed (icon goes there first).
-    Also used by tools/page_reader.py. Caller calls actions.begin(). Raises RuntimeError / Aborted."""
+    Also used by tools/page_reader.py. Caller calls actions.begin(). Raises Failed / Aborted."""
     win = next((w for w in _shell.list_windows() if w["focused"]), None)
     if win and geometry.is_firefox(win):
         return win
@@ -119,7 +123,7 @@ def focus_firefox():
         if win and geometry.is_firefox(win):
             break
         if time.monotonic() > end:
-            raise RuntimeError("Firefox didn't take focus")
+            raise Failed("Firefox didn't take focus")
         _actions.wait(0.05)
     if launched and _bridge is not None and not _bridge.connected:
         # A fresh Firefox: its extension connecting means the window is ready for input.
@@ -163,12 +167,13 @@ def _tab_info():
 
 
 def _wait_load(before):
-    """Wait until a new load in the active tab completes. None if the bridge never answered."""
-    if _bridge is None:
+    """Wait until a new load in the active tab completes. None if the bridge can't tell."""
+    if _bridge is None or not _bridge.connected:
+        _log("Firefox extension not connected; not waiting for the page load")
         return None
     end = time.monotonic() + config.WEB_LOAD_TIMEOUT_S
     last = None
-    while time.monotonic() < end:
+    while time.monotonic() < end and _bridge.connected:
         info = _tab_info()
         if info:
             last = info

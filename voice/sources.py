@@ -9,6 +9,7 @@ import threading
 import time
 
 import config
+import perf
 from voice.wake import strip_wake
 
 
@@ -78,7 +79,9 @@ class LocalMic(InputSource):
         ptt = self._ptt_until > 0   # pressed before or while speaking; one utterance uses it up
         self._ptt_until = 0.0
         self.on_state("think")
+        t = time.monotonic()
         text = self.stt.transcribe(audio)
+        perf.add("stt", t)
         command = strip_wake(text)
         if command is None and ptt:
             command = text.strip(" .")
@@ -126,6 +129,9 @@ class LocalSpeaker(OutputSource):
 
     def stop(self):
         self.tts.stop()
+
+    def close(self):
+        self.tts.close()
 
 
 class PrintOutput(OutputSource):
