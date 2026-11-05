@@ -31,10 +31,10 @@ class Vad:
         self.threshold_db = threshold_db
         self._preroll = collections.deque(maxlen=max(1, config.VAD_PREROLL_MS // ms))
         self._silence_max = max(1, config.VAD_SILENCE_MS // ms)
-        self._max_frames = int(config.VAD_MAX_S * 1000 / ms)
         self.reset()
 
-    def reset(self):
+    def reset(self, max_s=None):
+        self._max_frames = int((max_s or config.VAD_MAX_S) * 1000 / config.VAD_FRAME_MS)
         self._preroll.clear()
         self.frames = []
         self.speaking = False
@@ -108,14 +108,15 @@ class Mic:
         _log(f"noise floor {floor:.1f} dB, threshold {threshold:.1f} dB (DC offset {self._dc:+.3f})")
         return threshold
 
-    def listen(self, on_start=None, should_stop=None):
+    def listen(self, on_start=None, should_stop=None, max_s=None, flush=True):
         """Block until one utterance is captured; return float32 audio, or None if should_stop().
 
-        on_start() is called at speech onset. Audio heard before this call (e.g. our own TTS)
-        is discarded.
+        on_start() is called at speech onset. With flush, audio heard before this call (e.g. our
+        own TTS) is discarded. max_s caps the utterance (default VAD_MAX_S).
         """
-        self._flush()
-        self.vad.reset()
+        if flush:
+            self._flush()
+        self.vad.reset(max_s)
         t_wait = time.monotonic()
         t_start = None
         while True:

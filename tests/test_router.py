@@ -73,6 +73,8 @@ CASES = [
     ("close this window", call("close")),
     ("Close the tab.", call("close", target="tab")),
     ("close firefox", call("close", target="firefox")),
+    ("Close this tab.", call("close", target="tab")),
+    ("close the youtube tab", call("close", target="youtube tab")),
     ("open it", call("clarify")),
 ]
 

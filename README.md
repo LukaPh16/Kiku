@@ -62,6 +62,10 @@ The extension loads at login but keeps Kiku hidden until `./kiku.py` (or any cli
 `./main.py` quits on Ctrl+C or "Kiku, quit" (also "exit", "shut down", "goodbye"). It stops any running
 action first, then closes the mic, speaker, Firefox bridge and overlay. A second Ctrl+C quits without waiting.
 
+While Kiku works or talks, the mic keeps listening, and saying "Kiku" stops it (mic mode, `BARGE_IN` in
+`config.py`). Other speech is ignored. "Kiku" or "Kiku, stop" just stops. "Kiku" alone also opens a
+push-to-talk window, and "Kiku, open files" stops the current command and then runs the new one.
+
 With `PROFILE = True` in `config.py`, a stage timing table is printed after startup and after every turn
 (`perf.py`: stage, start offset in ms, duration, share of the turn, count).
 
@@ -167,6 +171,21 @@ venv/bin/python -m browser.debug --select 0 0 40      # selects text in paragrap
 ```
 
 Each outline should sit exactly on the element. Try it on both monitors and at a page zoom other than 100%.
+
+### close
+
+"close" / "close this window" closes the focused window, "close this tab" presses Ctrl+W in Firefox,
+"close firefox" closes every window of a running app, and "close the youtube tab" finds a Firefox tab by
+title or site (all tabs through the bridge; without it, only the tab showing in each window). The icon goes
+to the title bar first; windows close through kiku-shell's `CloseWindow` (Alt+F4 on an older kiku-shell),
+and Kiku checks they really closed (`venv/bin/python -m tests.test_close`).
+
+### go back
+
+"go back" in an open Gmail email returns to the list (tools/gmail.py). Anywhere else it presses Alt+Left in
+the window you're using, with the icon on Firefox's back button or the app's title bar, and checks that the
+page or the window title really changed (`venv/bin/python -m tests.test_go_back`). "This window" never means
+the terminal running Kiku: with `--text` it acts on the topmost other window.
 
 ### open_website
 

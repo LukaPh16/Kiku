@@ -119,4 +119,5 @@ import tools.open_app  # noqa: E402,F401
 import tools.open_website  # noqa: E402,F401
 import tools.page_reader  # noqa: E402,F401
 import tools.gmail  # noqa: E402,F401
+import tools.close  # noqa: E402,F401
 import tools.stubs  # noqa: E402,F401

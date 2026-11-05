@@ -8,7 +8,8 @@
   ./main.py --mute     print replies instead of speaking (still synthesizes, for timing)
   ./main.py --text --mute   quickest way to try the brain
 
-Ctrl+Alt+K stops speech and any action. Ctrl+C or "Kiku, quit" quits.
+Ctrl+Alt+K stops speech and any action. So does saying "Kiku" while Kiku works or talks (mic mode).
+Ctrl+C or "Kiku, quit" quits.
 """
 import argparse
 import os
@@ -67,12 +68,13 @@ def main():
     signal.signal(signal.SIGINT, signal.default_int_handler)   # even if started with SIGINT ignored
     perf.start_turn("startup")
     closers = []   # (name, fn), run in reverse on exit
+    heard = threading.Event()   # wake word said while Kiku was busy (barge-in)
     try:
-        router, src, out, actions, ov, set_state = _start(args, closers)
+        router, src, out, actions, ov, set_state = _start(args, closers, heard)
         perf.end_turn()
         log("ready. Say \"Kiku, ...\"" + (" (or type)" if args.text else " or press the PTT hotkey")
             + " Say \"Kiku, quit\" or press Ctrl+C to quit.")
-        _loop(router, src, out, actions, ov, set_state)
+        _loop(router, src, out, actions, ov, set_state, heard)
     except KeyboardInterrupt:
         log("interrupted (Ctrl+C or SIGTERM)")
     finally:
@@ -81,7 +83,7 @@ def main():
     return 0
 
 
-def _start(args, closers):
+def _start(args, closers, heard):
     """Load everything; slow parts (LLM warm-up, TTS, STT + mic calibration) in parallel."""
     with perf.stage("overlay"):
         ov = Overlay()
@@ -110,9 +112,9 @@ def _start(args, closers):
         from brain.router import Router
         from browser import geometry
         from browser.bridge import Bridge
-        from control.actions import Actions
+        from control.actions import Aborted, Actions
         from control.locate import Locator
-        from tools import gmail, open_app, open_website, page_reader
+        from tools import close, gmail, go_back, open_app, open_website, page_reader
         actions = Actions(ov)
         locator = Locator(ov)
         open_app.init(ov, actions, locator)
@@ -122,6 +124,8 @@ def _start(args, closers):
         bridge.start()   # the Firefox extension connects whenever Firefox runs
         closers.append(("bridge", bridge.stop))
         open_website.init(ov, actions, locator, bridge)
+        close.init(ov, actions, bridge)
+        go_back.init(ov, actions, bridge)
 
     llm = get_llm()
     closers.append(("llm", llm.close))
@@ -139,6 +143,8 @@ def _start(args, closers):
     page_reader.init(ov, actions, bridge, llm)
 
     def speak(text):   # tools that talk while they work (gmail reads rows as it highlights them)
+        if heard.is_set():   # interrupted: the tool stops here
+            raise Aborted()
         set_state("talk")
         out.say(text)
         set_state("think")
@@ -158,8 +164,14 @@ def _start(args, closers):
     return router, src, out, actions, ov, set_state
 
 
-def _loop(router, src, out, actions, ov, set_state):
+def _loop(router, src, out, actions, ov, set_state, heard):
     from tools.registry import speakable
+
+    def on_wake(command):   # from the mic thread: "Kiku ..." said over a running command
+        heard.set()
+        out.stop()
+        actions.abort()
+
     while True:
         command = src.listen()
         if command is None:
@@ -169,27 +181,40 @@ def _loop(router, src, out, actions, ov, set_state):
         t = time.monotonic()
         perf.start_turn(command)
         set_state("think")
+        heard.clear()
+        src.watch(on_wake)
         try:
-            reply, route = router.handle(command)
-        except Exception as e:   # a bug, not a tool failure (registry.run catches those)
-            log(f"turn failed: {e!r}")
-            traceback.print_exc()
-            reply, route = "Sorry, something went wrong.", {"tool": "error", "via": "error"}
-        if route["tool"] == "stop":
-            out.stop()
-            actions.abort()
-        if reply:
-            if not getattr(reply, "spoken", False):   # registry.Spoken: the tool already said it
-                set_state("talk")
-                with perf.stage("speak"):
-                    out.say(speakable(reply))
-            ov.show_caption("")   # page answers are captioned while spoken
+            reply, route = _turn(router, command, out, actions, set_state, heard, speakable)
+        finally:
+            src.unwatch()
+        ov.show_caption("")   # page answers are captioned while spoken
+        if heard.is_set():
+            log("turn: interrupted by the wake word")
         log(f"turn: {route['via']} {route['tool']}, heard -> spoken end {(time.monotonic() - t) * 1000:.0f} ms")
         perf.end_turn()
         if route["tool"] == "quit":
             return
         set_state("idle")
         ov.go_home(wait=False)   # task done: back to the start spot
+
+
+def _turn(router, command, out, actions, set_state, heard, speakable):
+    """Route and run one command, then speak the reply unless the wake word cut in."""
+    try:
+        reply, route = router.handle(command)
+    except Exception as e:   # a bug, not a tool failure (registry.run catches those)
+        log(f"turn failed: {e!r}")
+        traceback.print_exc()
+        reply, route = "Sorry, something went wrong.", {"tool": "error", "via": "error"}
+    if route["tool"] == "stop":
+        out.stop()
+        actions.abort()
+    if reply and not heard.is_set():
+        if not getattr(reply, "spoken", False):   # registry.Spoken: the tool already said it
+            set_state("talk")
+            with perf.stage("speak"):
+                out.say(speakable(reply))
+    return reply, route
 
 
 def _shutdown(closers):

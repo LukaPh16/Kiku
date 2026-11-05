@@ -30,7 +30,7 @@ import config
 from browser import geometry
 from browser.bridge import BridgeError
 from control.actions import Aborted
-from tools import open_website, page_reader
+from tools import close, go_back, open_website, page_reader
 from tools.registry import Spoken, register, sorry
 
 # ---- selectors (all of them) ----
@@ -619,12 +619,13 @@ def read_email(ctx, n=None, sender=None):
 def back(ctx):
     def run():
         try:
-            gmail_open = _page is not None and _bridge.connected and is_open(_url()) and is_gmail(_url())
+            front = close.front_window(_shell.list_windows()) if _shell is not None else None
+            gmail_open = (_page is not None and _bridge.connected and front is not None
+                          and geometry.is_firefox(front) and is_open(_url()) and is_gmail(_url()))
         except BridgeError:
             gmail_open = False
         if not gmail_open:
-            print(f"[KIKU] tool stub: back(app={ctx.focus['app']!r})", flush=True)
-            return "Going back."
+            return go_back.go_back(ctx)   # any other page or app
         msg = _ready()
         if msg:
             return msg

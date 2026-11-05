@@ -38,6 +38,9 @@ TYPE_CPS = 60                # typing speed, characters per second (fast but vis
 APP_WAIT_S = 10.0            # wait this long for a launched app's window
 OVERVIEW_WAIT_S = 1.5        # wait for Activities to open after Super
 APP_MATCH_MIN = 0.75         # fuzzy score (0..1) needed to accept a spoken app name
+CLOSE_WAIT_S = 2.0           # tools/close.py: wait this long for a window/tab to really close
+BACK_WAIT_S = 3.0            # tools/go_back.py: wait this long for "go back" to change the page
+TAB_MATCH_MIN = 0.6          # fuzzy score needed to accept a spoken tab name (title or site)
 ATSPI_MAX_NODES = 4000       # accessibility tree walk budget per search
 ATSPI_TIMEOUT_S = 2.0
 OCR_MIN_SCORE = 0.6
@@ -107,6 +110,10 @@ WAKE_WORDS = ["kiku", "kikoo", "kikou", "tiku", "tikoo", "kiko", "kikku", "kicku
               "key koo", "ki ku", "kick you", "kick u", "cuckoo", "coo coo", "kuku", "chiku", "qiku"]
 WAKE_PREFIXES = ["hey", "hi", "ok", "okay"]   # "hey kiku ..." also works
 PTT_WINDOW_S = 8.0           # after the PTT hotkey, the next utterance needs no wake word
+# While Kiku works or talks, the mic keeps listening; the wake word anywhere in an utterance stops it
+# ("Kiku" / "Kiku stop" stop; "Kiku, open files" stops and then runs that). Other speech is ignored.
+BARGE_IN = True
+BARGE_IN_MAX_S = 3.0         # utterances heard while busy are cut this short, so the wake word is caught fast
 
 # TTS (Kyutai Pocket TTS, CPU). Voice: a built-in name ("eve", "alba", ...) or a .wav/.safetensors path
 TTS_VOICE = "eve"

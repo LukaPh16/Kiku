@@ -236,6 +236,11 @@ class Overlay:
         r = self._do("ActivateWindow", "t", (int(window_id),))
         return bool(r and r[0])
 
+    def close_window(self, window_id):
+        """True if asked to close; None if this kiku-shell is too old to have CloseWindow."""
+        r = self._do("CloseWindow", "t", (int(window_id),))
+        return None if r is None else bool(r[0])
+
     def launch_app(self, app_id):
         r = self._do("LaunchApp", "s", (app_id,))
         return bool(r and r[0])

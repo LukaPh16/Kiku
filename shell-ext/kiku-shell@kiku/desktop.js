@@ -132,6 +132,15 @@ export function activateWindow(id) {
     return true;
 }
 
+// Asks the window to close, like its close button (the app may still ask to save first).
+export function closeWindow(id) {
+    const w = findWindow(id);
+    if (!w || !w.can_close())
+        return false;
+    w.delete(global.get_current_time());
+    return true;
+}
+
 export function launchApp(appId) {
     const app = Shell.AppSystem.get_default().lookup_app(appId);
     if (!app)

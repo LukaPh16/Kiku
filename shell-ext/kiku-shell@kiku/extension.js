@@ -78,6 +78,10 @@ const IFACE = `
       <arg type="t" name="id" direction="in"/>
       <arg type="b" name="ok" direction="out"/>
     </method>
+    <method name="CloseWindow">
+      <arg type="t" name="id" direction="in"/>
+      <arg type="b" name="ok" direction="out"/>
+    </method>
     <method name="LaunchApp">
       <arg type="s" name="app_id" direction="in"/>
       <arg type="b" name="ok" direction="out"/>
@@ -257,6 +261,10 @@ class Service {
 
     ActivateWindow(id) {
         return Desktop.activateWindow(id);
+    }
+
+    CloseWindow(id) {
+        return Desktop.closeWindow(id);
     }
 
     LaunchApp(appId) {

@@ -4,13 +4,14 @@ InputSource.listen() returns the next command meant for Kiku (wake word already 
 "" for "heard nothing for me", or None when the source is closed.
 OutputSource.say(text) blocks until spoken; stop() cuts it off from any thread.
 """
+import queue
 import sys
 import threading
 import time
 
 import config
 import perf
-from voice.wake import strip_wake
+from voice.wake import find_wake, is_stop, strip_wake
 
 
 def _log(msg):
@@ -26,6 +27,12 @@ class InputSource:
 
     def push_to_talk(self):
         """PTT hotkey pressed: accept the next utterance without a wake word."""
+
+    def watch(self, on_wake):
+        """Kiku is busy: call on_wake(command) from another thread if the wake word is heard."""
+
+    def unwatch(self):
+        """Kiku is idle again: stop watching (returns once the watcher has stopped)."""
 
     def close(self):
         pass
@@ -53,6 +60,9 @@ class LocalMic(InputSource):
         self.mic = Mic()
         self._ptt_until = 0.0
         self._closed = threading.Event()
+        self._pending = queue.Queue()   # commands said over Kiku while it was busy
+        self._watching = False
+        self._watcher = None
 
     def push_to_talk(self):
         self._ptt_until = time.monotonic() + config.PTT_WINDOW_S
@@ -65,6 +75,12 @@ class LocalMic(InputSource):
     def listen(self):
         if self._closed.is_set():
             return None
+        try:
+            command = self._pending.get_nowait()
+            self.on_state("think")
+            return command
+        except queue.Empty:
+            pass
         audio = self.mic.listen(on_start=lambda: self.on_state("listen"), should_stop=self._should_stop)
         if audio is None:
             if self._closed.is_set():
@@ -100,8 +116,40 @@ class LocalMic(InputSource):
             return True
         return self._ptt_until > 0 and not self._ptt_armed() and not self.mic.vad.speaking
 
+    def watch(self, on_wake):
+        if not config.BARGE_IN or self._watcher:
+            return
+        self._watching = True
+        self._watcher = threading.Thread(target=self._watch, args=(on_wake,), name="kiku-barge-in", daemon=True)
+        self._watcher.start()
+
+    def unwatch(self):
+        self._watching = False
+        if self._watcher:
+            self._watcher.join()
+            self._watcher = None
+
+    def _watch(self, on_wake):
+        done = lambda: not self._watching or self._closed.is_set()
+        while not done():
+            # no flush: keep the audio that arrived while the last piece was transcribed
+            audio = self.mic.listen(should_stop=done, max_s=config.BARGE_IN_MAX_S, flush=False)
+            if audio is None or len(audio) == 0:
+                continue
+            text = self.stt.transcribe(audio)
+            command = find_wake(text)
+            if command is None:
+                continue
+            _log(f"barge-in: wake word heard, stopping (command {command!r})")
+            if not command:
+                self.push_to_talk()   # just "Kiku": the next utterance is the command
+            elif not is_stop(command):
+                self._pending.put(command)   # "Kiku, open files": run it next
+            on_wake(command)
+
     def close(self):
         self._closed.set()
+        self.unwatch()
         self.mic.close()
 
 
